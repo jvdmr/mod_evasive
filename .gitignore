@@ -1,0 +1,2 @@
+dist/libapache2-mod-evasive.deb
+dist/libapache2-mod-evasive/usr/lib/apache2/modules/mod_evasive.so
