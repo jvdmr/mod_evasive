@@ -210,6 +210,8 @@ static int access_checker(request_rec *r)
 
     int ret = OK;
 
+    const char *client_ip = apr_table_get(r->headers_in, "X-Forwarded-For") ?: r->useragent_ip;
+
     /* BEGIN DoS Evasive Maneuvers Code */
 
     if (cfg->enabled && r->prev == NULL && r->main == NULL && cfg->hit_list != NULL) {
@@ -218,11 +220,11 @@ static int access_checker(request_rec *r)
         time_t t = time(NULL);
 
         /* Check whitelist */
-        if (is_whitelisted(r->useragent_ip, cfg))
+        if (is_whitelisted(client_ip, cfg))
             return OK;
 
         /* First see if the IP itself is on "hold" */
-        n = ntt_find(cfg->hit_list, r->useragent_ip);
+        n = ntt_find(cfg->hit_list, client_ip);
 
         if (n != NULL && t-n->timestamp<cfg->blocking_period) {
 
@@ -238,7 +240,7 @@ static int access_checker(request_rec *r)
                 return OK;
 
             /* Has URI been hit too much? */
-            snprintf(hash_key, 2048, "%s_%s", r->useragent_ip, r->uri);
+            snprintf(hash_key, 2048, "%s_%s", client_ip, r->uri);
 
             n = ntt_find(cfg->hit_list, hash_key);
             if (n != NULL) {
@@ -246,7 +248,7 @@ static int access_checker(request_rec *r)
                 /* If URI is being hit too much, add to "hold" list and 403 */
                 if (t-n->timestamp<cfg->page_interval && n->count>=cfg->page_count) {
                     ret = cfg->http_reply;
-                    ntt_insert(cfg->hit_list, r->useragent_ip, time(NULL));
+                    ntt_insert(cfg->hit_list, client_ip, time(NULL));
                 } else {
 
                     /* Reset our hit count list as necessary */
@@ -261,14 +263,14 @@ static int access_checker(request_rec *r)
             }
 
             /* Has site been hit too much? */
-            snprintf(hash_key, 2048, "%s_SITE", r->useragent_ip);
+            snprintf(hash_key, 2048, "%s_SITE", client_ip);
             n = ntt_find(cfg->hit_list, hash_key);
             if (n != NULL) {
 
                 /* If site is being hit too much, add to "hold" list and 403 */
                 if (t-n->timestamp<cfg->site_interval && n->count>=cfg->site_count) {
                     ret = cfg->http_reply;
-                    ntt_insert(cfg->hit_list, r->useragent_ip, time(NULL));
+                    ntt_insert(cfg->hit_list, client_ip, time(NULL));
                 } else {
 
                     /* Reset our hit count list as necessary */
@@ -289,27 +291,27 @@ static int access_checker(request_rec *r)
             struct stat s;
             FILE *file;
 
-            snprintf(filename, sizeof(filename), "%s/dos-%s", cfg->log_dir != NULL ? cfg->log_dir : DEFAULT_LOG_DIR, r->useragent_ip);
+            snprintf(filename, sizeof(filename), "%s/dos-%s", cfg->log_dir != NULL ? cfg->log_dir : DEFAULT_LOG_DIR, client_ip);
             if (stat(filename, &s)) {
                 file = fopen(filename, "w");
                 if (file != NULL) {
                     fprintf(file, "%ld\n", getpid());
                     fclose(file);
 
-                    LOG(LOG_ALERT, "Blacklisting address %s: possible DoS attack.", r->useragent_ip);
+                    LOG(LOG_ALERT, "Blacklisting address %s: possible DoS attack.", client_ip);
                     if (cfg->email_notify != NULL) {
                         snprintf(filename, sizeof(filename), MAILER, cfg->email_notify);
                         file = popen(filename, "w");
                         if (file != NULL) {
                             fprintf(file, "To: %s\n", cfg->email_notify);
-                            fprintf(file, "Subject: HTTP BLACKLIST %s\n\n", r->useragent_ip);
-                            fprintf(file, "mod_evasive HTTP Blacklisted %s\n", r->useragent_ip);
+                            fprintf(file, "Subject: HTTP BLACKLIST %s\n\n", client_ip);
+                            fprintf(file, "mod_evasive HTTP Blacklisted %s\n", client_ip);
                             pclose(file);
                         }
                     }
 
                     if (cfg->system_command != NULL) {
-                        snprintf(filename, sizeof(filename), cfg->system_command, r->useragent_ip);
+                        snprintf(filename, sizeof(filename), cfg->system_command, r->client_ip);
                         system(filename);
                     }
 
