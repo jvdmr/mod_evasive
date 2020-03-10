@@ -315,8 +315,8 @@ change this.
 If this value is set, the system command specified will be executed
 whenever an IP address becomes blacklisted.  This is designed to enable
 system calls to ip filter or other tools.  A locking mechanism using /tmp
-prevents continuous system calls.  Use %s to denote the IP address of the
-blacklisted IP.
+prevents continuous system calls.  Use first %s to denote the IP address and
+second %s to get the last requested URI of the blacklisted IP.
 
 ## DOSLogDir
 
