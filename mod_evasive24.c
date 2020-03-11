@@ -309,7 +309,7 @@ static int access_checker(request_rec *r)
                     }
 
                     if (cfg->system_command != NULL) {
-                        snprintf(filename, sizeof(filename), cfg->system_command, r->useragent_ip);
+                        snprintf(filename, sizeof(filename), cfg->system_command, r->useragent_ip, r->uri);
                         system(filename);
                     }
 
