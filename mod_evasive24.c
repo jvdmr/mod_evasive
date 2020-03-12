@@ -120,6 +120,7 @@ typedef struct {
     char *log_dir;
     char *system_command;
     int http_reply;
+    int locking;
 } evasive_config;
 
 static const char *whitelist(cmd_parms *cmd, void *dconfig, const char *ip);
@@ -149,6 +150,7 @@ static void * create_dir_conf(apr_pool_t *p, char *context)
         cfg->log_dir = NULL;
         cfg->system_command = NULL;
         cfg->http_reply = DEFAULT_HTTP_REPLY;
+        cfg->locking = 1;
     }
 
     return cfg;
@@ -290,7 +292,8 @@ static int access_checker(request_rec *r)
             FILE *file;
 
             snprintf(filename, sizeof(filename), "%s/dos-%s", cfg->log_dir != NULL ? cfg->log_dir : DEFAULT_LOG_DIR, r->useragent_ip);
-            if (stat(filename, &s)) {
+
+            if (stat(filename, &s) == -1 || (!cfg->locking && difftime(t, s.st_mtime) > cfg->blocking_period)) {
                 file = fopen(filename, "w");
                 if (file != NULL) {
                     fprintf(file, "%ld\n", getpid());
@@ -317,7 +320,7 @@ static int access_checker(request_rec *r)
                     LOG(LOG_ALERT, "Couldn't open logfile %s: %s",filename, strerror(errno));
                 }
 
-            } /* if (temp file does not exist) */
+            } /* if (lock file does not exist or locking is turned OFF) */
 
         } /* if (ret == cfg->http_reply) */
 
@@ -802,6 +805,13 @@ get_http_reply(cmd_parms *cmd, void *dconfig, const char *value) {
     return NULL;
 }
 
+static const char *
+get_locking(cmd_parms *cmd, void *dconfig, const char *value) {
+    evasive_config *cfg = (evasive_config *) dconfig;
+    cfg->locking = (strcmp("true", value) == 0) ? 1 : 0;
+    return NULL;
+}
+
 /* END Configuration Functions */
 
 static const command_rec access_cmds[] =
@@ -844,6 +854,9 @@ static const command_rec access_cmds[] =
 
     AP_INIT_ITERATE("DOSHTTPStatus", get_http_reply, NULL, RSRC_CONF,
             "HTTP reply code"),
+
+    AP_INIT_TAKE1("DOSLocking", get_locking, NULL, RSRC_CONF,
+            "Enable/Disable notification locking mechanism"),
 
     { NULL }
 };

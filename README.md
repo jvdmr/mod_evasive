@@ -318,6 +318,12 @@ system calls to ip filter or other tools.  A locking mechanism using /tmp
 prevents continuous system calls.  Use first %s to denote the IP address and
 second %s to get the last requested URI of the blacklisted IP.
 
+## DOSLocking
+
+By default it is set to `true` and notifications are sent only once per blocked
+IP. If you want to receive a notification each time the IP is blocked then set
+this to `false`.
+
 ## DOSLogDir
 
 Choose an alternative temp directory
