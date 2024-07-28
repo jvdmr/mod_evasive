@@ -50,14 +50,14 @@ it maliciously.
 
 Five different module sources have been provided:
 
-* Apache v1.3 API: mod_evasive13.c (outdated)
-* Apache v2.0 API: mod_evasive20.c
 * Apache v2.4 API: mod_evasive24.c
 * Apache v2.4 API (windows): mod_evasive24win.c
+* Apache v2.0 API: mod_evasive20.c
+* Apache v1.3 API: mod_evasive13.c (outdated)
 * NSAPI (iPlanet): mod_evasiveNSAPI.c
 
 NOTE: mod_evasiveNSAPI is a port submitted by Reine Persson <reiper@rsv.se>
-      and is not officially supported as part of the mod_evasive project.
+	and is not officially supported as part of the mod_evasive project.
 
 # How it works
 
@@ -170,13 +170,13 @@ following block to your httpd.conf:
 ## Apache (1.3/2.0/2.4)
 ```
 <IfModule mod_evasive.c>
-    DOSEnabled          true
-    DOSHashTableSize    3097
-    DOSPageCount        2
-    DOSSiteCount        50
-    DOSPageInterval     1
-    DOSSiteInterval     1
-    DOSBlockingPeriod   10
+	DOSEnabled          true
+	DOSHashTableSize    3097
+	DOSPageCount        2
+	DOSSiteCount        50
+	DOSPageInterval     1
+	DOSSiteInterval     1
+	DOSBlockingPeriod   10
 </IfModule>
 ```
 
@@ -184,10 +184,10 @@ Optionally you can also add the following directives:
 
 ```
     DOSEmailNotify  you@yourdomain.com
-    DOSSystemCommand  "su - someuser -c '/sbin/... %s ...'"
-    DOSLogDir   "/var/lock/mod_evasive"
-    DOSWhitelist  127.0.0.1
-    DOSWhitelistUri  whitelist.*regex
+	DOSSystemCommand  "su - someuser -c '/sbin/... %s ...'"
+	DOSLogDir   "/var/lock/mod_evasive"
+	DOSWhitelist  127.0.0.1
+	DOSWhitelistUri  whitelist.*regex
     DOSHTTPStatus       429
 ```
 
@@ -209,13 +209,13 @@ LoadModule evasive_module modules/mod_evasive.so
 
 ## NSAPI
 SunONE (iPlanet,Netscape) Configuration
-                                                                                
+
 ### Configure iPlanet 4.1
 
 Edit obj.conf:
 ```
 Init fn="load-modules" funcs="mod_evasive_init,mod_evasive_check" shlib="/opt/ns-4.1/plugins/lib/mod_evasive.sl"
-                                                                                
+
 Init fn="mod_evasive_init" DOSPageCount=2 DOSSiteCount=50 DOSPageInterval=1 DOSSiteInterval=1 DOSBlockingPeriod=10 DOSWhitelist="10.60.0.7,10.65.0.10"
 ```
 
@@ -236,7 +236,7 @@ NameTrans fn=mod_evasive_check
 Edit magnus.conf:
 ```                                                                                
 Init fn="load-modules" funcs="mod_evasive_init,mod_evasive_check" shlib="/opt/iplanet-6.0/plugins/lib/mod_evasive.sl"
-                                                                                
+
 Init fn="mod_evasive_init" DOSWhitelist="10.60.0.7,10.65.0.10"
 ```
 
@@ -325,7 +325,7 @@ Choose an alternative temp directory
 By default "/tmp" will be used for locking mechanism, which opens some 
 security issues if your system is open to shell users.
 
-    http://security.lss.hr/index.php?page=details&ID=LSS-2005-01-01
+	http://security.lss.hr/index.php?page=details&ID=LSS-2005-01-01
 
 In the event you have nonprivileged shell users, you'll want to create a
 directory writable only to the user Apache is running as (usually root),
@@ -353,8 +353,8 @@ blocked.
 To whitelist an address (or range) add an entry to the Apache configuration 
 in the following fashion:
 
-		DOSWhitelist  127.0.0.1
-		DOSWhitelist  127.0.0.*
+	DOSWhitelist  127.0.0.1
+	DOSWhitelist  127.0.0.*
 
 Wildcards can be used on up to the last 3 octets if necessary.  Multiple
 DOSWhitelist commands may be used in the configuration.
@@ -372,8 +372,8 @@ Use with caution.
 To whitelist a URI add an entry to the Apache configuration 
 in the following fashion:
 
-		DOSWhitelistUri  /path/to/whitelisted/resource
-		DOSWhitelistUri  .*whitelisted.*
+	DOSWhitelistUri  /path/to/whitelisted/resource
+	DOSWhitelistUri  .*whitelisted.*
 
 `DOSWhitelistUri` supports perl-style regex and matches the whole request URI
 (everything between the domain name and the ?) against this regex.
@@ -411,8 +411,8 @@ Please don't use this script to DoS others without their permission.
 # Known bugs and Issues
 
 - This module appears to conflict with the Microsoft Frontpage Extensions.
-  Frontpage sucks anyway, so if you're using Frontpage I assume you're asking
-  for problems, and not really interested in conserving server resources anyway.
+	Frontpage sucks anyway, so if you're using Frontpage I assume you're asking
+	for problems, and not really interested in conserving server resources anyway.
 
 - When used together with mod_rewrite, mod_rewrite seems to take priority over
 	this. This means that Apache will always rewrite the url even during an
@@ -421,6 +421,9 @@ Please don't use this script to DoS others without their permission.
 	https, the redirect to https will always happen. In this case you should
 	enable mod_evasive on the https virtualhost only, as it will not have any
 	effect on the http virtualhost.
+
+- Using mpm_itk instead of the default mpm_event will cause mod_evasive to never
+	get triggered.
   
 # Feedback
 
