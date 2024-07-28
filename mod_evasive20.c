@@ -322,11 +322,13 @@ int is_whitelisted(const char *ip, evasive_config *cfg) {
 
 static apr_status_t destroy_config(void *dconfig) {
     evasive_config *cfg = (evasive_config *) dconfig;
-    ntt_destroy(cfg->hit_list);
-    free(cfg->email_notify);
-    free(cfg->log_dir);
-    free(cfg->system_command);
-    free(cfg);
+    if (cfg != NULL) {
+        ntt_destroy(cfg->hit_list);
+        free(cfg->email_notify);
+        free(cfg->log_dir);
+        free(cfg->system_command);
+        free(cfg);
+    }
     return APR_SUCCESS;
 }
 
@@ -446,7 +448,7 @@ struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, time_t timestamp) 
     /* Create a new node */
     new_node = ntt_node_create(key);
     new_node->timestamp = timestamp;
-    new_node->timestamp = 0;
+    new_node->count = 0;
 
     ntt->items++;
 

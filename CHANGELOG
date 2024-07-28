@@ -1,3 +1,12 @@
+Version 2.3.0
+-----------
+
+[20240728] WebReusAbuse + jvdmr: Bugfix: segfault on empty config
+
+[20240728] jvdmr: Bugfix: count initialisation in apache 2.0 and windows apache 2.4
+
+[20240728] jvdmr: Add DOSWhitelistUri config option for Windows [EXPERIMENTAL/UNTESTED]
+
 Version 2.2.0
 -----------
 
