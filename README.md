@@ -380,6 +380,10 @@ in the following fashion:
 
 You can add several entries.
 
+> [!CAUTION]
+> This is currently UNTESTED on Windows, I'm not sure it will even compile. Let
+> me know about any issues, or even if it does work as expected! :pray:
+
 # Tweaking Apache
 
 The keep-alive settings for your children should be reasonable enough to 
