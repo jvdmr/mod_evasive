@@ -446,7 +446,7 @@ struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, time_t timestamp) 
     /* Create a new node */
     new_node = ntt_node_create(key);
     new_node->timestamp = timestamp;
-    new_node->timestamp = 0;
+    new_node->count = 0;
 
     ntt->items++;
 
