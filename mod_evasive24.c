@@ -98,8 +98,13 @@ static struct ntt_node *c_ntt_next(struct ntt *ntt, struct ntt_c *c);
 
 /* BEGIN DoS Evasive Maneuvers Globals */
 
+struct pcre_node {
+    pcre2_code *re;
+    pcre2_match_data *match_data;
+};
+
 struct pcre_vector {
-    pcre2_code **data;
+    struct pcre_node *data;
     size_t size;
 };
 
@@ -362,11 +367,12 @@ static const char *whitelist_ip(__attribute__((unused)) cmd_parms *cmd, void *dc
 }
 
 static const char *pcre_vector_push(struct pcre_vector *vec, const char *uri_re) {
-    pcre2_code **newdata;
+    struct pcre_node *newdata;
     pcre2_code *re;
     int errornumber;
     PCRE2_SIZE erroroffset;
     PCRE2_SPTR pattern;
+    pcre2_match_data *match_data;
 
     pattern = (PCRE2_SPTR) uri_re;
 
@@ -388,15 +394,27 @@ static const char *pcre_vector_push(struct pcre_vector *vec, const char *uri_re)
         return NULL;
     }
 
+    match_data = pcre2_match_data_create_from_pattern(re, NULL);
+    if (!match_data) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "Failed to allocate PCRE2 match data");
+        pcre2_code_free(re);
+        return NULL;
+    }
+
     newdata = ev_reallocarray(vec->data, vec->size + 1, sizeof(*(vec->data)));
     if (!newdata) {
         ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "Failed to allocate array for URI list");
+        pcre2_match_data_free(match_data);
         pcre2_code_free(re);
         return NULL;
     }
     vec->data = newdata;
 
-    vec->data[vec->size++] = re;
+    vec->data[vec->size++] = (struct pcre_node) {
+        .re = re,
+        .match_data = match_data,
+    };
+
     return NULL;
 }
 
@@ -416,8 +434,11 @@ static const char *blocklist_uri(__attribute__((unused)) cmd_parms *cmd, void *d
 
 static void pcre_vector_destroy(struct pcre_vector *vec)
 {
-    for (size_t i = 0; i < vec->size; i++)
-        pcre2_code_free(vec->data[i]);
+    for (size_t i = 0; i < vec->size; i++) {
+        struct pcre_node *node = &vec->data[i];
+        pcre2_code_free(node->re);
+        pcre2_match_data_free(node->match_data);
+    }
 
     free(vec->data);
 }
@@ -617,25 +638,16 @@ static int pcre_vector_match(const char *uri, const struct pcre_vector *vec) {
     subject_length = strlen((const char *)subject);
 
     for (size_t i = 0; i < vec->size; i++) {
-        const pcre2_code *re = vec->data[i];
-        pcre2_match_data *match_data;
-
-        match_data = pcre2_match_data_create_from_pattern(re, NULL);
-        if (!match_data) {
-            ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "Failed to allocate pcre2 match data");
-            continue;
-        }
+        const struct pcre_node *node = &vec->data[i];
 
         rc = pcre2_match(
-                re,                   /* the compiled pattern */
+                node->re,             /* the compiled pattern */
                 subject,              /* the subject string */
                 subject_length,       /* the length of the subject */
                 0,                    /* start at offset 0 in the subject */
                 0,                    /* default options */
-                match_data,           /* block for storing the result */
+                node->match_data,     /* block for storing the result */
                 NULL);                /* use default match context */
-
-        pcre2_match_data_free(match_data);   /* Release memory used for the match */
 
         if (rc >= 0) {
             // match
