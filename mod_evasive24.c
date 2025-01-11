@@ -197,6 +197,20 @@ static const char *whitelist_uri(__attribute__((unused)) cmd_parms *cmd, void *d
     return NULL;
 }
 
+static void uri_whitelist_destroy(struct pcre_node *head)
+{
+    struct pcre_node *iter = head, *tmp;
+
+    while (iter) {
+        tmp = iter->next;
+
+        pcre2_code_free(iter->re);
+        free(iter);
+
+        iter = tmp;
+    }
+}
+
 static int access_checker(request_rec *r)
 {
     evasive_config *cfg = (evasive_config *) ap_get_module_config(r->per_dir_config, &evasive_module);
@@ -414,10 +428,11 @@ static apr_status_t destroy_config(void *dconfig) {
     evasive_config *cfg = (evasive_config *) dconfig;
     if (cfg != NULL) {
         ntt_destroy(cfg->hit_list);
+        uri_whitelist_destroy(cfg->uri_whitelist);
         free(cfg->email_notify);
         free(cfg->log_dir);
         free(cfg->system_command);
-        free(cfg);
+        /* cfg is pool allocated */
    }
    return APR_SUCCESS;
 }
