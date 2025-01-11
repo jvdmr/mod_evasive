@@ -854,5 +854,6 @@ module AP_MODULE_DECLARE_DATA evasive_module =
     NULL,
     NULL,
     access_cmds,
-    register_hooks
+    register_hooks,
+    AP_MODULE_FLAG_NONE
 };
