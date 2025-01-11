@@ -49,7 +49,7 @@ AP_DECLARE_MODULE(evasive);
 #define MAILER  "/bin/mail %s"
 #define LOG( A, ... ) { openlog("mod_evasive", LOG_PID, LOG_DAEMON); syslog( A, __VA_ARGS__ ); closelog(); }
 
-#define DEFAULT_HASH_TBL_SIZE   3097ul  // Default hash table size
+#define DEFAULT_HASH_TBL_SIZE   3097UL  // Default hash table size
 #define DEFAULT_PAGE_COUNT      2       // Default maximum page hit count per interval
 #define DEFAULT_SITE_COUNT      50      // Default maximum site hit count per interval
 #define DEFAULT_PAGE_INTERVAL   1       // Default 1 Second page interval
@@ -435,12 +435,12 @@ static apr_status_t destroy_config(void *dconfig) {
 
 static const unsigned long ntt_prime_list[ntt_num_primes] =
 {
-    53ul,         97ul,         193ul,       389ul,       769ul,
-    1543ul,       3079ul,       6151ul,      12289ul,     24593ul,
-    49157ul,      98317ul,      196613ul,    393241ul,    786433ul,
-    1572869ul,    3145739ul,    6291469ul,   12582917ul,  25165843ul,
-    50331653ul,   100663319ul,  201326611ul, 402653189ul, 805306457ul,
-    1610612741ul, 3221225473ul, 4294967291ul
+    53UL,         97UL,         193UL,       389UL,       769UL,
+    1543UL,       3079UL,       6151UL,      12289UL,     24593UL,
+    49157UL,      98317UL,      196613UL,    393241UL,    786433UL,
+    1572869UL,    3145739UL,    6291469UL,   12582917UL,  25165843UL,
+    50331653UL,   100663319UL,  201326611UL, 402653189UL, 805306457UL,
+    1610612741UL, 3221225473UL, 4294967291UL
 };
 
 
