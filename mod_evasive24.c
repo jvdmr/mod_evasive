@@ -661,22 +661,39 @@ static struct ntt_node *c_ntt_next(struct ntt *ntt, struct ntt_c *c) {
 static const char *
 get_enabled(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *value) {
     evasive_config *cfg = (evasive_config *) dconfig;
-    cfg->enabled = (strcmp("true", value) == 0) ? 1 : 0;
+
+    if (strcmp("true", value) == 0) {
+        cfg->enabled = 1;
+    } else if (strcmp("false", value) == 0) {
+        cfg->enabled = 0;
+    } else {
+        ap_log_error(APLOG_MARK, APLOG_WARNING, 0, ap_server_conf, "Invalid DOSEnabled value '%s', mod_evasive disabled.", value);
+        cfg->enabled = 0;
+    }
+
     return NULL;
 }
 
 static const char *
 get_hash_tbl_size(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *value) {
     evasive_config *cfg = (evasive_config *) dconfig;
-    long n = strtol(value, NULL, 0);
+    char *endptr;
+    long n;
 
-    if (n<=0) {
+    errno = 0;
+    n = strtol(value, &endptr, 0);
+    if (errno || *endptr != '\0' || n <= 0) {
+        ap_log_error(APLOG_MARK, APLOG_WARNING, 0, ap_server_conf, "Invalid DOSHashTableSize value '%s', using default %lu.",
+                     value, DEFAULT_HASH_TBL_SIZE);
         cfg->hash_table_size = DEFAULT_HASH_TBL_SIZE;
-    } else  {
+    } else {
         cfg->hash_table_size = n;
+
+        ntt_destroy(cfg->hit_list);
+        cfg->hit_list = ntt_create(cfg->hash_table_size);
+        if (!cfg->hit_list)
+            ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "Failed to allocate hashtable");
     }
-    ntt_destroy(cfg->hit_list);
-    cfg->hit_list = ntt_create(cfg->hash_table_size);
 
     return NULL;
 }
@@ -684,8 +701,14 @@ get_hash_tbl_size(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const c
 static const char *
 get_page_count(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *value) {
     evasive_config *cfg = (evasive_config *) dconfig;
-    long n = strtol(value, NULL, 0);
-    if (n<=0) {
+    char *endptr;
+    long n;
+
+    errno = 0;
+    n = strtol(value, &endptr, 0);
+    if (errno || *endptr != '\0' || n <= 0) {
+        ap_log_error(APLOG_MARK, APLOG_WARNING, 0, ap_server_conf, "Invalid DOSPageCount value '%s', using default %d.",
+                     value, DEFAULT_PAGE_COUNT);
         cfg->page_count = DEFAULT_PAGE_COUNT;
     } else {
         cfg->page_count = n;
@@ -697,8 +720,14 @@ get_page_count(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char
 static const char *
 get_site_count(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *value) {
     evasive_config *cfg = (evasive_config *) dconfig;
-    long n = strtol(value, NULL, 0);
-    if (n<=0) {
+    char *endptr;
+    long n;
+
+    errno = 0;
+    n = strtol(value, &endptr, 0);
+    if (errno || *endptr != '\0' || n <= 0) {
+        ap_log_error(APLOG_MARK, APLOG_WARNING, 0, ap_server_conf, "Invalid DOSSiteCount value '%s', using default %d.",
+                     value, DEFAULT_SITE_COUNT);
         cfg->site_count = DEFAULT_SITE_COUNT;
     } else {
         cfg->site_count = n;
@@ -710,8 +739,14 @@ get_site_count(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char
 static const char *
 get_page_interval(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *value) {
     evasive_config *cfg = (evasive_config *) dconfig;
-    long n = strtol(value, NULL, 0);
-    if (n<=0) {
+    char *endptr;
+    long n;
+
+    errno = 0;
+    n = strtol(value, &endptr, 0);
+    if (errno || *endptr != '\0' || n <= 0 || n > INT_MAX) {
+        ap_log_error(APLOG_MARK, APLOG_WARNING, 0, ap_server_conf, "Invalid DOSPageInterval value '%s', using default %d.",
+                     value, DEFAULT_PAGE_INTERVAL);
         cfg->page_interval = DEFAULT_PAGE_INTERVAL;
     } else {
         cfg->page_interval = n;
@@ -723,8 +758,14 @@ get_page_interval(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const c
 static const char *
 get_site_interval(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *value) {
     evasive_config *cfg = (evasive_config *) dconfig;
-    long n = strtol(value, NULL, 0);
-    if (n<=0) {
+    char *endptr;
+    long n;
+
+    errno = 0;
+    n = strtol(value, &endptr, 0);
+    if (errno || *endptr != '\0' || n <= 0 || n > INT_MAX) {
+        ap_log_error(APLOG_MARK, APLOG_WARNING, 0, ap_server_conf, "Invalid DOSSiteInterval value '%s', using default %d.",
+                     value, DEFAULT_SITE_INTERVAL);
         cfg->site_interval = DEFAULT_SITE_INTERVAL;
     } else {
         cfg->site_interval = n;
@@ -736,8 +777,14 @@ get_site_interval(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const c
 static const char *
 get_blocking_period(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *value) {
     evasive_config *cfg = (evasive_config *) dconfig;
-    long n = strtol(value, NULL, 0);
-    if (n<=0) {
+    char *endptr;
+    long n;
+
+    errno = 0;
+    n = strtol(value, &endptr, 0);
+    if (errno || *endptr != '\0' || n <= 0 || n > INT_MAX) {
+        ap_log_error(APLOG_MARK, APLOG_WARNING, 0, ap_server_conf, "Invalid DOSBlockingPeriod value '%s', using default %d.",
+                     value, DEFAULT_BLOCKING_PERIOD);
         cfg->blocking_period = DEFAULT_BLOCKING_PERIOD;
     } else {
         cfg->blocking_period = n;
@@ -785,11 +832,17 @@ get_system_command(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const 
 static const char *
 get_http_reply(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *value) {
     evasive_config *cfg = (evasive_config *) dconfig;
-    long reply = strtol(value, NULL, 0);
-    if (reply <= 0) {
+    char *endptr;
+    long n;
+
+    errno = 0;
+    n = strtol(value, &endptr, 0);
+    if (errno || *endptr != '\0' || ((n < 99 || n > 599) && n != OK && n != DECLINED)) {
+        ap_log_error(APLOG_MARK, APLOG_WARNING, 0, ap_server_conf, "Invalid DOSHTTPStatus value '%s', using default %d.",
+                     value, HTTP_FORBIDDEN);
         cfg->http_reply = HTTP_FORBIDDEN;
     } else {
-        cfg->http_reply = reply;
+        cfg->http_reply = n;
     }
 
     return NULL;
