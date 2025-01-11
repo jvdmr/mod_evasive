@@ -66,8 +66,8 @@ enum { ntt_num_primes = 28 };
 
 /* ntt root tree */
 struct ntt {
-    long size;
-    long items;
+    size_t size;
+    size_t items;
     struct ntt_node **tbl;
 };
 
@@ -75,22 +75,22 @@ struct ntt {
 struct ntt_node {
     char *key;
     time_t timestamp;
-    long count;
+    size_t count;
     struct ntt_node *next;
 };
 
 /* ntt cursor */
 struct ntt_c {
-    long iter_index;
+    size_t iter_index;
     struct ntt_node *iter_next;
 };
 
-static struct ntt *ntt_create(unsigned long size);
+static struct ntt *ntt_create(size_t size);
 static int ntt_destroy(struct ntt *ntt);
 static struct ntt_node *ntt_find(struct ntt *ntt, const char *key);
 static struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, time_t timestamp);
 static int ntt_delete(struct ntt *ntt, const char *key);
-static long ntt_hashcode(struct ntt *ntt, const char *key);
+static size_t ntt_hashcode(const struct ntt *ntt, const char *key);
 static struct ntt_node *c_ntt_first(struct ntt *ntt, struct ntt_c *c);
 static struct ntt_node *c_ntt_next(struct ntt *ntt, struct ntt_c *c);
 
@@ -108,7 +108,7 @@ typedef struct {
     int enabled;
     char *context;
     struct ntt *hit_list;   // Our dynamic hash table
-    unsigned long hash_table_size;
+    size_t hash_table_size;
     struct pcre_node *uri_whitelist;
     int page_count;
     int page_interval;
@@ -430,7 +430,7 @@ static apr_status_t destroy_config(void *dconfig) {
 
 /* BEGIN NTT (Named Timestamp Tree) Functions */
 
-static const unsigned long ntt_prime_list[ntt_num_primes] =
+static const size_t ntt_prime_list[ntt_num_primes] =
 {
     53UL,         97UL,         193UL,       389UL,       769UL,
     1543UL,       3079UL,       6151UL,      12289UL,     24593UL,
@@ -443,8 +443,8 @@ static const unsigned long ntt_prime_list[ntt_num_primes] =
 
 /* Find the numeric position in the hash table based on key and modulus */
 
-static long ntt_hashcode(struct ntt *ntt, const char *key) {
-    unsigned long val = 0;
+static size_t ntt_hashcode(const struct ntt *ntt, const char *key) {
+    size_t val = 0;
     for (; *key; ++key) val = 5 * val + *key;
     return(val % ntt->size);
 }
@@ -471,13 +471,13 @@ static struct ntt_node *ntt_node_create(const char *key) {
 
 /* Tree initializer */
 
-static struct ntt *ntt_create(unsigned long size) {
-    long i = 0;
+static struct ntt *ntt_create(size_t size) {
+    size_t i = 0;
     struct ntt *ntt = (struct ntt *) malloc(sizeof(struct ntt));
 
     if (ntt == NULL)
         return NULL;
-    while (ntt_prime_list[i] < size) { i++; }
+    while (i < (ntt_num_primes - 1) && ntt_prime_list[i] < size) { i++; }
     ntt->size  = ntt_prime_list[i];
     ntt->items = 0;
     ntt->tbl   = (struct ntt_node **) calloc(ntt->size, sizeof(struct ntt_node *));
@@ -491,7 +491,7 @@ static struct ntt *ntt_create(unsigned long size) {
 /* Find an object in the tree */
 
 static struct ntt_node *ntt_find(struct ntt *ntt, const char *key) {
-    long hash_code;
+    size_t hash_code;
     struct ntt_node *node;
 
     if (ntt == NULL) return NULL;
@@ -511,12 +511,12 @@ static struct ntt_node *ntt_find(struct ntt *ntt, const char *key) {
 /* Insert a node into the tree */
 
 static struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, time_t timestamp) {
-    long hash_code;
+    size_t hash_code;
     struct ntt_node *parent;
     struct ntt_node *node;
     struct ntt_node *new_node = NULL;
 
-    if (ntt == NULL) return NULL;
+    if (ntt == NULL || ntt->items == SIZE_MAX) return NULL;
 
     hash_code = ntt_hashcode(ntt, key);
     parent  = NULL;
@@ -575,7 +575,6 @@ static int ntt_destroy(struct ntt *ntt) {
 
     free(ntt->tbl);
     free(ntt);
-    ntt = (struct ntt *) NULL;
 
     return 0;
 }
@@ -583,7 +582,7 @@ static int ntt_destroy(struct ntt *ntt) {
 /* Delete a single node in the tree */
 
 static int ntt_delete(struct ntt *ntt, const char *key) {
-    long hash_code;
+    size_t hash_code;
     struct ntt_node *parent = NULL;
     struct ntt_node *node;
     struct ntt_node *del_node = NULL;
@@ -635,28 +634,25 @@ static struct ntt_node *c_ntt_first(struct ntt *ntt, struct ntt_c *c) {
 /* Point cursor to next iteration in tree */
 
 static struct ntt_node *c_ntt_next(struct ntt *ntt, struct ntt_c *c) {
-    long index;
+    size_t index;
     struct ntt_node *node = c->iter_next;
 
     if (ntt == NULL) return NULL;
 
     if (node) {
-        if (node != NULL) {
-            c->iter_next = node->next;
-            return (node);
+        c->iter_next = node->next;
+        return (node);
+    }
+
+    while (c->iter_index < ntt->size) {
+        index = c->iter_index++;
+
+        if (ntt->tbl[index]) {
+            c->iter_next = ntt->tbl[index]->next;
+            return(ntt->tbl[index]);
         }
     }
 
-    if (! node) {
-        while (c->iter_index < ntt->size) {
-            index = c->iter_index++;
-
-            if (ntt->tbl[index]) {
-                c->iter_next = ntt->tbl[index]->next;
-                return(ntt->tbl[index]);
-            }
-        }
-    }
     return((struct ntt_node *)NULL);
 }
 
