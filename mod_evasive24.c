@@ -161,16 +161,15 @@ static const char *whitelist_uri(__attribute__((unused)) cmd_parms *cmd, void *d
 {
     evasive_config *cfg = (evasive_config *) dconfig;
     struct pcre_node *node;
+    int errornumber;
+    PCRE2_SIZE erroroffset;
+    PCRE2_SPTR pattern;
 
     node = (struct pcre_node *) malloc(sizeof(struct pcre_node));
     if (node == NULL) {
         return NULL;
     }
 
-    int errornumber;
-    PCRE2_SIZE erroroffset;
-
-    PCRE2_SPTR pattern;
     pattern = (PCRE2_SPTR) uri_re;
 
     node->re = pcre2_compile(
