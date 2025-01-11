@@ -224,7 +224,7 @@ static int access_checker(request_rec *r)
 
             /* If the IP is on "hold", make it wait longer in 403 land */
             ret = cfg->http_reply;
-            n->timestamp = time(NULL);
+            n->timestamp = t;
 
             /* Not on hold, check hit stats */
         } else {
@@ -242,7 +242,7 @@ static int access_checker(request_rec *r)
                 /* If URI is being hit too much, add to "hold" list and 403 */
                 if (t-n->timestamp<cfg->page_interval && n->count>=cfg->page_count) {
                     ret = cfg->http_reply;
-                    ntt_insert(cfg->hit_list, r->useragent_ip, time(NULL));
+                    ntt_insert(cfg->hit_list, r->useragent_ip, t);
                 } else {
 
                     /* Reset our hit count list as necessary */
@@ -264,7 +264,7 @@ static int access_checker(request_rec *r)
                 /* If site is being hit too much, add to "hold" list and 403 */
                 if (t-n->timestamp<cfg->site_interval && n->count>=cfg->site_count) {
                     ret = cfg->http_reply;
-                    ntt_insert(cfg->hit_list, r->useragent_ip, time(NULL));
+                    ntt_insert(cfg->hit_list, r->useragent_ip, t);
                 } else {
 
                     /* Reset our hit count list as necessary */
@@ -450,7 +450,7 @@ static size_t ntt_hashcode(const struct ntt *ntt, const char *key) {
 
 /* Creates a single node in the tree */
 
-static struct ntt_node *ntt_node_create(const char *key) {
+static struct ntt_node *ntt_node_create(const char *key, time_t timestamp) {
     char *node_key;
     struct ntt_node* node;
 
@@ -462,9 +462,12 @@ static struct ntt_node *ntt_node_create(const char *key) {
         free(node);
         return NULL;
     }
-    node->key = node_key;
-    node->timestamp = time(NULL);
-    node->next = NULL;
+    *node = (struct ntt_node) {
+        .key = node_key,
+        .timestamp = timestamp,
+        .count = 0,
+        .next = NULL,
+    };
     return(node);
 }
 
@@ -540,9 +543,7 @@ static struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, time_t time
     }
 
     /* Create a new node */
-    new_node = ntt_node_create(key);
-    new_node->timestamp = timestamp;
-    new_node->count = 0;
+    new_node = ntt_node_create(key, timestamp);
 
     ntt->items++;
 
