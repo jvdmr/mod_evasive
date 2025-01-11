@@ -29,7 +29,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
-#include <syslog.h>
 #include <errno.h>
 #include <unistd.h>  // getpid(2)
 
@@ -48,7 +47,6 @@
 AP_DECLARE_MODULE(evasive);
 
 #define MAILER  "/bin/mail %s"
-#define LOG( A, ... ) { openlog("mod_evasive", LOG_PID, LOG_DAEMON); syslog( A, __VA_ARGS__ ); closelog(); }
 
 #define DEFAULT_HASH_TBL_SIZE   3097UL  // Default hash table size
 #define DEFAULT_PAGE_COUNT      2       // Default maximum page hit count per interval
@@ -292,7 +290,7 @@ static int access_checker(request_rec *r)
                     fprintf(file, "%ld\n", getpid());
                     fclose(file);
 
-                    LOG(LOG_ALERT, "Blacklisting address %s: possible DoS attack.", r->useragent_ip);
+                    ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r, "Blacklisting address %s: possible DoS attack.", r->useragent_ip);
                     if (cfg->email_notify != NULL) {
                         snprintf(filename, sizeof(filename), MAILER, cfg->email_notify);
                         file = popen(filename, "w");
@@ -310,7 +308,7 @@ static int access_checker(request_rec *r)
                     }
 
                 } else {
-                    LOG(LOG_ALERT, "Couldn't open logfile %s: %s",filename, strerror(errno));
+                    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "Couldn't open logfile %s: %s",filename, strerror(errno));
                 }
 
             } /* if (temp file does not exist) */
