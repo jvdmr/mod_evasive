@@ -433,7 +433,7 @@ static apr_status_t destroy_config(void *dconfig) {
 
 /* BEGIN NTT (Named Timestamp Tree) Functions */
 
-static unsigned long ntt_prime_list[ntt_num_primes] =
+static const unsigned long ntt_prime_list[ntt_num_primes] =
 {
     53ul,         97ul,         193ul,       389ul,       769ul,
     1543ul,       3079ul,       6151ul,      12289ul,     24593ul,
