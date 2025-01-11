@@ -110,9 +110,9 @@ typedef struct {
     struct ntt *hit_list;   // Our dynamic hash table
     size_t hash_table_size;
     struct pcre_node *uri_whitelist;
-    int page_count;
+    unsigned int page_count;
     int page_interval;
-    int site_count;
+    unsigned int site_count;
     int site_interval;
     int blocking_period;
     char *email_notify;
