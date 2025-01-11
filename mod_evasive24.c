@@ -107,7 +107,6 @@ struct pcre_node {
 
 typedef struct {
     int enabled;
-    char *context;
     struct ntt *hit_list;   // Our dynamic hash table
     size_t hash_table_size;
     struct pcre_node *uri_whitelist;
@@ -128,14 +127,12 @@ static int is_uri_whitelisted(const char *uri, evasive_config *cfg);
 
 /* END DoS Evasive Maneuvers Globals */
 
-static void * create_dir_conf(apr_pool_t *p, char *context)
+static void * create_dir_conf(apr_pool_t *p, __attribute__((unused)) char *context)
 {
-    context = context ? context : "(undefined context)";
     /* Create a new hit list for this listener */
     evasive_config *cfg = apr_pcalloc(p, sizeof(evasive_config));
     if (cfg) {
         cfg->enabled = 0;
-        cfg->context = strdup(context);
         cfg->hash_table_size = DEFAULT_HASH_TBL_SIZE;
         cfg->hit_list = ntt_create(cfg->hash_table_size);
         cfg->uri_whitelist = NULL;
