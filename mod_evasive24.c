@@ -176,7 +176,7 @@ static const char *whitelist_uri(__attribute__((unused)) cmd_parms *cmd, void *d
     node->re = pcre2_compile(
             pattern,               /* the pattern */
             PCRE2_ZERO_TERMINATED, /* indicates pattern is zero-terminated */
-            0,                     /* default options */
+            PCRE2_NO_AUTO_CAPTURE, /* Disable numbered capturing parentheses */
             &errornumber,          /* for error number */
             &erroroffset,          /* for error offset */
             NULL);                 /* use default compile context */
