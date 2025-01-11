@@ -42,9 +42,9 @@
 #include "http_log.h"
 #include "http_request.h"
 
-module AP_MODULE_DECLARE_DATA evasive_module;
-
 /* BEGIN DoS Evasive Maneuvers Definitions */
+
+AP_DECLARE_MODULE(evasive);
 
 #define MAILER  "/bin/mail %s"
 #define LOG( A, ... ) { openlog("mod_evasive", LOG_PID, LOG_DAEMON); syslog( A, __VA_ARGS__ ); closelog(); }
@@ -865,4 +865,3 @@ module AP_MODULE_DECLARE_DATA evasive_module =
     access_cmds,
     register_hooks
 };
-
