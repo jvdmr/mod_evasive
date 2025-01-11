@@ -216,12 +216,13 @@ static int access_checker(request_rec *r)
     evasive_config *cfg = (evasive_config *) ap_get_module_config(r->per_dir_config, &evasive_module);
 
     int ret = OK;
+    const char *log_reason = NULL;
 
     /* BEGIN DoS Evasive Maneuvers Code */
 
     if (cfg->enabled && r->prev == NULL && r->main == NULL && cfg->hit_list != NULL) {
         char hash_key[2048];
-        struct ntt_node *n;
+        struct ntt_node *ip_node, *n;
         time_t t = time(NULL);
 
         /* Check whitelist */
@@ -229,13 +230,13 @@ static int access_checker(request_rec *r)
             return OK;
 
         /* First see if the IP itself is on "hold" */
-        n = ntt_find(cfg->hit_list, r->useragent_ip);
+        ip_node = ntt_find(cfg->hit_list, r->useragent_ip);
 
-        if (n != NULL && t-n->timestamp<cfg->blocking_period) {
+        if (ip_node != NULL && t-ip_node->timestamp<cfg->blocking_period) {
 
             /* If the IP is on "hold", make it wait longer in 403 land */
             ret = cfg->http_reply;
-            n->timestamp = t;
+            ip_node->timestamp = t;
 
             /* Not on hold, check hit stats */
         } else {
@@ -252,6 +253,8 @@ static int access_checker(request_rec *r)
 
                 /* If URI is being hit too much, add to "hold" list and 403 */
                 if (t-n->timestamp<cfg->page_interval && n->count>=cfg->page_count) {
+                    if (!ip_node || t-ip_node->timestamp>=cfg->blocking_period)
+                        log_reason = "URI DOS";
                     ret = cfg->http_reply;
                     ntt_insert(cfg->hit_list, r->useragent_ip, t);
                 } else {
@@ -274,6 +277,8 @@ static int access_checker(request_rec *r)
 
                 /* If site is being hit too much, add to "hold" list and 403 */
                 if (t-n->timestamp<cfg->site_interval && n->count>=cfg->site_count) {
+                    if (!ip_node || t-ip_node->timestamp>=cfg->blocking_period)
+                        log_reason = "site DOS";
                     ret = cfg->http_reply;
                     ntt_insert(cfg->hit_list, r->useragent_ip, t);
                 } else {
@@ -332,11 +337,11 @@ static int access_checker(request_rec *r)
 
     /* END DoS Evasive Maneuvers Code */
 
-    if (ret == cfg->http_reply
+    if (log_reason && ret == cfg->http_reply
             && (ap_satisfies(r) != SATISFY_ANY || !ap_some_auth_required(r))) {
         ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r,
-                "client denied by server configuration: %s",
-                r->filename);
+                "client denied by server configuration: %s: %s",
+                log_reason, r->filename);
     }
 
     return ret;
