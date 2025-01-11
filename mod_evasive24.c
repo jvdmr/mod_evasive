@@ -85,15 +85,14 @@ struct ntt_c {
     struct ntt_node *iter_next;
 };
 
-struct ntt *ntt_create(unsigned long size);
-int ntt_destroy(struct ntt *ntt);
-struct ntt_node *ntt_find(struct ntt *ntt, const char *key);
-struct ntt_node *ntt_re_find(struct ntt *ntt, const char *key);
-struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, time_t timestamp);
-int ntt_delete(struct ntt *ntt, const char *key);
-long ntt_hashcode(struct ntt *ntt, const char *key);
-struct ntt_node *c_ntt_first(struct ntt *ntt, struct ntt_c *c);
-struct ntt_node *c_ntt_next(struct ntt *ntt, struct ntt_c *c);
+static struct ntt *ntt_create(unsigned long size);
+static int ntt_destroy(struct ntt *ntt);
+static struct ntt_node *ntt_find(struct ntt *ntt, const char *key);
+static struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, time_t timestamp);
+static int ntt_delete(struct ntt *ntt, const char *key);
+static long ntt_hashcode(struct ntt *ntt, const char *key);
+static struct ntt_node *c_ntt_first(struct ntt *ntt, struct ntt_c *c);
+static struct ntt_node *c_ntt_next(struct ntt *ntt, struct ntt_c *c);
 
 /* END NTT (Named Timestamp Tree) Headers */
 
@@ -122,11 +121,9 @@ typedef struct {
     int http_reply;
 } evasive_config;
 
-static const char *whitelist(cmd_parms *cmd, void *dconfig, const char *ip);
-int is_whitelisted(const char *ip, evasive_config *cfg);
+static int is_whitelisted(const char *ip, evasive_config *cfg);
 
-static const char *whitelist_uri(cmd_parms *cmd, void *dconfig, const char *uri_re);
-int is_uri_whitelisted(const char *uri, evasive_config *cfg);
+static int is_uri_whitelisted(const char *uri, evasive_config *cfg);
 
 /* END DoS Evasive Maneuvers Globals */
 
@@ -335,7 +332,7 @@ static int access_checker(request_rec *r)
     return ret;
 }
 
-int is_whitelisted(const char *ip, evasive_config *cfg) {
+static int is_whitelisted(const char *ip, evasive_config *cfg) {
     char hashkey[128];
     char octet[4][4];
     char *dip;
@@ -378,7 +375,7 @@ int is_whitelisted(const char *ip, evasive_config *cfg) {
     return 0;
 }
 
-int is_uri_whitelisted(const char *path, evasive_config *cfg) {
+static int is_uri_whitelisted(const char *uri, evasive_config *cfg) {
 
     int rc;
     pcre2_match_data *match_data;
@@ -386,7 +383,7 @@ int is_uri_whitelisted(const char *path, evasive_config *cfg) {
     PCRE2_SPTR subject;
     size_t subject_length;
 
-    subject = (PCRE2_SPTR) path;
+    subject = (PCRE2_SPTR) uri;
     subject_length = strlen((char *)subject);
 
     struct pcre_node *node;
@@ -446,7 +443,7 @@ static const unsigned long ntt_prime_list[ntt_num_primes] =
 
 /* Find the numeric position in the hash table based on key and modulus */
 
-long ntt_hashcode(struct ntt *ntt, const char *key) {
+static long ntt_hashcode(struct ntt *ntt, const char *key) {
     unsigned long val = 0;
     for (; *key; ++key) val = 5 * val + *key;
     return(val % ntt->size);
@@ -454,7 +451,7 @@ long ntt_hashcode(struct ntt *ntt, const char *key) {
 
 /* Creates a single node in the tree */
 
-struct ntt_node *ntt_node_create(const char *key) {
+static struct ntt_node *ntt_node_create(const char *key) {
     char *node_key;
     struct ntt_node* node;
 
@@ -474,7 +471,7 @@ struct ntt_node *ntt_node_create(const char *key) {
 
 /* Tree initializer */
 
-struct ntt *ntt_create(unsigned long size) {
+static struct ntt *ntt_create(unsigned long size) {
     long i = 0;
     struct ntt *ntt = (struct ntt *) malloc(sizeof(struct ntt));
 
@@ -493,7 +490,7 @@ struct ntt *ntt_create(unsigned long size) {
 
 /* Find an object in the tree */
 
-struct ntt_node *ntt_find(struct ntt *ntt, const char *key) {
+static struct ntt_node *ntt_find(struct ntt *ntt, const char *key) {
     long hash_code;
     struct ntt_node *node;
 
@@ -513,7 +510,7 @@ struct ntt_node *ntt_find(struct ntt *ntt, const char *key) {
 
 /* Insert a node into the tree */
 
-struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, time_t timestamp) {
+static struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, time_t timestamp) {
     long hash_code;
     struct ntt_node *parent;
     struct ntt_node *node;
@@ -563,7 +560,7 @@ struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, time_t timestamp) 
 
 /* Tree destructor */
 
-int ntt_destroy(struct ntt *ntt) {
+static int ntt_destroy(struct ntt *ntt) {
     struct ntt_node *node, *next;
     struct ntt_c c;
 
@@ -585,7 +582,7 @@ int ntt_destroy(struct ntt *ntt) {
 
 /* Delete a single node in the tree */
 
-int ntt_delete(struct ntt *ntt, const char *key) {
+static int ntt_delete(struct ntt *ntt, const char *key) {
     long hash_code;
     struct ntt_node *parent = NULL;
     struct ntt_node *node;
@@ -628,7 +625,7 @@ int ntt_delete(struct ntt *ntt, const char *key) {
 
 /* Point cursor to first item in tree */
 
-struct ntt_node *c_ntt_first(struct ntt *ntt, struct ntt_c *c) {
+static struct ntt_node *c_ntt_first(struct ntt *ntt, struct ntt_c *c) {
 
     c->iter_index = 0;
     c->iter_next = (struct ntt_node *)NULL;
@@ -637,7 +634,7 @@ struct ntt_node *c_ntt_first(struct ntt *ntt, struct ntt_c *c) {
 
 /* Point cursor to next iteration in tree */
 
-struct ntt_node *c_ntt_next(struct ntt *ntt, struct ntt_c *c) {
+static struct ntt_node *c_ntt_next(struct ntt *ntt, struct ntt_c *c) {
     long index;
     struct ntt_node *node = c->iter_next;
 
