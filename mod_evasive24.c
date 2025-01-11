@@ -381,7 +381,7 @@ static int is_uri_whitelisted(const char *uri, const evasive_config *cfg) {
     size_t subject_length;
 
     subject = (PCRE2_SPTR) uri;
-    subject_length = strlen((char *)subject);
+    subject_length = strlen((const char *)subject);
 
     for (const struct pcre_node *node = cfg->uri_whitelist; node; node = node->next) {
         match_data = pcre2_match_data_create_from_pattern(node->re, NULL);
