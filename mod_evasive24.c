@@ -151,7 +151,7 @@ static void * create_dir_conf(apr_pool_t *p, char *context)
     return cfg;
 }
 
-static const char *whitelist(cmd_parms *cmd, void *dconfig, const char *ip)
+static const char *whitelist(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *ip)
 {
     evasive_config *cfg = (evasive_config *) dconfig;
     char entry[128];
@@ -161,7 +161,7 @@ static const char *whitelist(cmd_parms *cmd, void *dconfig, const char *ip)
     return NULL;
 }
 
-static const char *whitelist_uri(cmd_parms *cmd, void *dconfig, const char *uri_re)
+static const char *whitelist_uri(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *uri_re)
 {
     evasive_config *cfg = (evasive_config *) dconfig;
     struct pcre_node *node;
@@ -666,14 +666,14 @@ static struct ntt_node *c_ntt_next(struct ntt *ntt, struct ntt_c *c) {
 /* BEGIN Configuration Functions */
 
 static const char *
-get_enabled(cmd_parms *cmd, void *dconfig, const char *value) {
+get_enabled(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *value) {
     evasive_config *cfg = (evasive_config *) dconfig;
     cfg->enabled = (strcmp("true", value) == 0) ? 1 : 0;
     return NULL;
 }
 
 static const char *
-get_hash_tbl_size(cmd_parms *cmd, void *dconfig, const char *value) {
+get_hash_tbl_size(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *value) {
     evasive_config *cfg = (evasive_config *) dconfig;
     long n = strtol(value, NULL, 0);
 
@@ -688,7 +688,7 @@ get_hash_tbl_size(cmd_parms *cmd, void *dconfig, const char *value) {
 }
 
 static const char *
-get_page_count(cmd_parms *cmd, void *dconfig, const char *value) {
+get_page_count(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *value) {
     evasive_config *cfg = (evasive_config *) dconfig;
     long n = strtol(value, NULL, 0);
     if (n<=0) {
@@ -701,7 +701,7 @@ get_page_count(cmd_parms *cmd, void *dconfig, const char *value) {
 }
 
 static const char *
-get_site_count(cmd_parms *cmd, void *dconfig, const char *value) {
+get_site_count(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *value) {
     evasive_config *cfg = (evasive_config *) dconfig;
     long n = strtol(value, NULL, 0);
     if (n<=0) {
@@ -714,7 +714,7 @@ get_site_count(cmd_parms *cmd, void *dconfig, const char *value) {
 }
 
 static const char *
-get_page_interval(cmd_parms *cmd, void *dconfig, const char *value) {
+get_page_interval(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *value) {
     evasive_config *cfg = (evasive_config *) dconfig;
     long n = strtol(value, NULL, 0);
     if (n<=0) {
@@ -727,7 +727,7 @@ get_page_interval(cmd_parms *cmd, void *dconfig, const char *value) {
 }
 
 static const char *
-get_site_interval(cmd_parms *cmd, void *dconfig, const char *value) {
+get_site_interval(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *value) {
     evasive_config *cfg = (evasive_config *) dconfig;
     long n = strtol(value, NULL, 0);
     if (n<=0) {
@@ -740,7 +740,7 @@ get_site_interval(cmd_parms *cmd, void *dconfig, const char *value) {
 }
 
 static const char *
-get_blocking_period(cmd_parms *cmd, void *dconfig, const char *value) {
+get_blocking_period(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *value) {
     evasive_config *cfg = (evasive_config *) dconfig;
     long n = strtol(value, NULL, 0);
     if (n<=0) {
@@ -753,7 +753,7 @@ get_blocking_period(cmd_parms *cmd, void *dconfig, const char *value) {
 }
 
 static const char *
-get_log_dir(cmd_parms *cmd, void *dconfig, const char *value) {
+get_log_dir(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *value) {
     evasive_config *cfg = (evasive_config *) dconfig;
     if (value != NULL && value[0] != 0) {
         if (cfg->log_dir != NULL)
@@ -765,7 +765,7 @@ get_log_dir(cmd_parms *cmd, void *dconfig, const char *value) {
 }
 
 static const char *
-get_email_notify(cmd_parms *cmd, void *dconfig, const char *value) {
+get_email_notify(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *value) {
     evasive_config *cfg = (evasive_config *) dconfig;
     if (value != NULL && value[0] != 0) {
         if (cfg->email_notify != NULL)
@@ -777,7 +777,7 @@ get_email_notify(cmd_parms *cmd, void *dconfig, const char *value) {
 }
 
 static const char *
-get_system_command(cmd_parms *cmd, void *dconfig, const char *value) {
+get_system_command(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *value) {
     evasive_config *cfg = (evasive_config *) dconfig;
     if (value != NULL && value[0] != 0) {
         if (cfg->system_command != NULL)
@@ -789,7 +789,7 @@ get_system_command(cmd_parms *cmd, void *dconfig, const char *value) {
 }
 
 static const char *
-get_http_reply(cmd_parms *cmd, void *dconfig, const char *value) {
+get_http_reply(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *value) {
     evasive_config *cfg = (evasive_config *) dconfig;
     long reply = strtol(value, NULL, 0);
     if (reply <= 0) {
