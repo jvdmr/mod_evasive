@@ -234,7 +234,7 @@ static int access_checker(request_rec *r)
                 return OK;
 
             /* Has URI been hit too much? */
-            snprintf(hash_key, 2048, "%s_%s", r->useragent_ip, r->uri);
+            snprintf(hash_key, sizeof(hash_key), "%s_%s", r->useragent_ip, r->uri);
 
             n = ntt_find(cfg->hit_list, hash_key);
             if (n != NULL) {
@@ -257,7 +257,7 @@ static int access_checker(request_rec *r)
             }
 
             /* Has site been hit too much? */
-            snprintf(hash_key, 2048, "%s_SITE", r->useragent_ip);
+            snprintf(hash_key, sizeof(hash_key), "%s_SITE", r->useragent_ip);
             n = ntt_find(cfg->hit_list, hash_key);
             if (n != NULL) {
 
