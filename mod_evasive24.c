@@ -347,6 +347,7 @@ static int is_whitelisted(const char *ip, evasive_config *cfg) {
     char octet[4][4];
     char *dip;
     char *oct;
+    char *saveptr;
     int i = 0;
 
     memset(octet, 0, 16);
@@ -354,12 +355,12 @@ static int is_whitelisted(const char *ip, evasive_config *cfg) {
     if (dip == NULL)
         return 0;
 
-    oct = strtok(dip, ".");
+    oct = strtok_r(dip, ".", &saveptr);
     while(oct != NULL && i<4) {
         if (strlen(oct)<=3)
             strcpy(octet[i], oct);
         i++;
-        oct = strtok(NULL, ".");
+        oct = strtok_r(NULL, ".", &saveptr);
     }
     free(dip);
 
