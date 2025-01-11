@@ -385,11 +385,12 @@ static int is_uri_whitelisted(const char *uri, evasive_config *cfg) {
     subject = (PCRE2_SPTR) uri;
     subject_length = strlen((char *)subject);
 
-    struct pcre_node *node;
-    node = cfg->uri_whitelist;
-
-    while (node != NULL) {
+    for (struct pcre_node *node = cfg->uri_whitelist; node; node = node->next) {
         match_data = pcre2_match_data_create_from_pattern(node->re, NULL);
+        if (!match_data) {
+            ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "Failed to allocate pcre2 match data");
+            continue;
+        }
 
         rc = pcre2_match(
                 node->re,             /* the compiled pattern */
@@ -406,8 +407,6 @@ static int is_uri_whitelisted(const char *uri, evasive_config *cfg) {
             // match
             return 1;
         }
-
-        node = node->next;
     }
 
     // no match
