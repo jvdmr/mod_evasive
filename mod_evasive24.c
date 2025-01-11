@@ -675,6 +675,7 @@ get_hash_tbl_size(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const c
     } else  {
         cfg->hash_table_size = n;
     }
+    ntt_destroy(cfg->hit_list);
     cfg->hit_list = ntt_create(cfg->hash_table_size);
 
     return NULL;
