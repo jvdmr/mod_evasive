@@ -28,10 +28,10 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <stdlib.h>
-#include <sys/types.h>
 #include <time.h>
 #include <syslog.h>
 #include <errno.h>
+#include <unistd.h>  // getpid(2)
 
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
