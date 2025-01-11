@@ -40,6 +40,7 @@
 #include "http_core.h"
 #include "http_config.h"
 #include "http_log.h"
+#include "http_main.h"
 #include "http_request.h"
 
 /* BEGIN DoS Evasive Maneuvers Definitions */
@@ -191,8 +192,9 @@ static const char *whitelist_uri(__attribute__((unused)) cmd_parms *cmd, void *d
     {
         PCRE2_UCHAR buffer[256];
         pcre2_get_error_message(errornumber, buffer, sizeof(buffer));
-        printf("PCRE2 compilation failed at offset %d: %s\n", (int)erroroffset,
-                buffer);
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "PCRE2 compilation of regex '%s' failed at offset %lu: %s\n",
+                     uri_re, (unsigned long) erroroffset, buffer);
+        free(node);
         return NULL;
     }
 
