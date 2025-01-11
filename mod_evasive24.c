@@ -128,21 +128,29 @@ static int is_uri_whitelisted(const char *uri, const evasive_config *cfg);
 static void * create_dir_conf(apr_pool_t *p, __attribute__((unused)) char *context)
 {
     /* Create a new hit list for this listener */
-    evasive_config *cfg = apr_pcalloc(p, sizeof(evasive_config));
-    if (cfg) {
-        cfg->enabled = 0;
-        cfg->hash_table_size = DEFAULT_HASH_TBL_SIZE;
-        cfg->hit_list = ntt_create(cfg->hash_table_size);
-        cfg->uri_whitelist = NULL;
-        cfg->page_count = DEFAULT_PAGE_COUNT;
-        cfg->page_interval = DEFAULT_PAGE_INTERVAL;
-        cfg->site_count = DEFAULT_SITE_COUNT;
-        cfg->site_interval = DEFAULT_SITE_INTERVAL;
-        cfg->email_notify = NULL;
-        cfg->log_dir = NULL;
-        cfg->system_command = NULL;
-        cfg->http_reply = DEFAULT_HTTP_REPLY;
+    evasive_config *cfg = apr_palloc(p, sizeof(evasive_config));
+    if (!cfg) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "Failed to allocate configuration");
+        return NULL;
     }
+
+    *cfg = (evasive_config) {
+        .enabled = 0,
+        .hit_list = ntt_create(DEFAULT_HASH_TBL_SIZE),
+        .hash_table_size = DEFAULT_HASH_TBL_SIZE,
+        .uri_whitelist = NULL,
+        .page_count = DEFAULT_PAGE_COUNT,
+        .page_interval = DEFAULT_PAGE_INTERVAL,
+        .site_count = DEFAULT_SITE_COUNT,
+        .site_interval = DEFAULT_SITE_INTERVAL,
+        .blocking_period = DEFAULT_BLOCKING_PERIOD,
+        .email_notify = NULL,
+        .log_dir = NULL,
+        .system_command = NULL,
+        .http_reply = DEFAULT_HTTP_REPLY,
+    };
+    if (!cfg->hit_list)
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "Failed to allocate hashtable");
 
     return cfg;
 }
