@@ -127,6 +127,7 @@ typedef struct {
     struct ntt *hit_list;   // Our dynamic hash table
     size_t hash_table_size;
     struct pcre_vector uri_whitelist;
+    struct pcre_vector uri_blocklist;
     struct ip_vector ip_whitelist;
     unsigned int page_count;
     int page_interval;
@@ -142,6 +143,7 @@ typedef struct {
 static int is_whitelisted(const char *ip, const evasive_config *cfg);
 
 static int is_uri_whitelisted(const char *uri, const evasive_config *cfg);
+static int is_uri_blocklisted(const char *uri, const evasive_config *cfg);
 
 /* END DoS Evasive Maneuvers Globals */
 
@@ -170,6 +172,7 @@ static void * create_dir_conf(apr_pool_t *p, __attribute__((unused)) char *conte
         .hit_list = ntt_create(DEFAULT_HASH_TBL_SIZE),
         .hash_table_size = DEFAULT_HASH_TBL_SIZE,
         .uri_whitelist = (struct pcre_vector) { .data = NULL, .size = 0 },
+        .uri_blocklist = (struct pcre_vector) { .data = NULL, .size = 0 },
         .ip_whitelist = (struct ip_vector) { .data = NULL, .size = 0 },
         .page_count = DEFAULT_PAGE_COUNT,
         .page_interval = DEFAULT_PAGE_INTERVAL,
@@ -358,9 +361,7 @@ static const char *whitelist_ip(__attribute__((unused)) cmd_parms *cmd, void *dc
     return NULL;
 }
 
-static const char *whitelist_uri(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *uri_re)
-{
-    evasive_config *cfg = (evasive_config *) dconfig;
+static const char *pcre_vector_push(struct pcre_vector *vec, const char *uri_re) {
     pcre2_code **newdata;
     pcre2_code *re;
     int errornumber;
@@ -387,23 +388,38 @@ static const char *whitelist_uri(__attribute__((unused)) cmd_parms *cmd, void *d
         return NULL;
     }
 
-    newdata = ev_reallocarray(cfg->uri_whitelist.data, cfg->uri_whitelist.size + 1, sizeof(*cfg->uri_whitelist.data));
+    newdata = ev_reallocarray(vec->data, vec->size + 1, sizeof(*(vec->data)));
     if (!newdata) {
-        ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "Failed to allocate array for URI whitelist");
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "Failed to allocate array for URI list");
+        pcre2_code_free(re);
         return NULL;
     }
-    cfg->uri_whitelist.data = newdata;
+    vec->data = newdata;
 
-    cfg->uri_whitelist.data[cfg->uri_whitelist.size++] = re;
+    vec->data[vec->size++] = re;
     return NULL;
 }
 
-static void uri_whitelist_destroy(struct pcre_vector *uri_whitelist)
+static const char *whitelist_uri(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *uri_re)
 {
-    for (size_t i = 0; i < uri_whitelist->size; i++)
-        pcre2_code_free(uri_whitelist->data[i]);
+    evasive_config *cfg = (evasive_config *) dconfig;
 
-    free(uri_whitelist->data);
+    return pcre_vector_push(&cfg->uri_whitelist, uri_re);
+}
+
+static const char *blocklist_uri(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *uri_re)
+{
+    evasive_config *cfg = (evasive_config *) dconfig;
+
+    return pcre_vector_push(&cfg->uri_blocklist, uri_re);
+}
+
+static void pcre_vector_destroy(struct pcre_vector *vec)
+{
+    for (size_t i = 0; i < vec->size; i++)
+        pcre2_code_free(vec->data[i]);
+
+    free(vec->data);
 }
 
 static int access_checker(request_rec *r)
@@ -440,53 +456,61 @@ static int access_checker(request_rec *r)
             if (is_uri_whitelisted(r->uri, cfg))
                 return OK;
 
-            /* Has URI been hit too much? */
-            snprintf(hash_key, sizeof(hash_key), "%s_%s", r->useragent_ip, r->uri);
-
-            n = ntt_find(cfg->hit_list, hash_key);
-            if (n != NULL) {
-
-                /* If URI is being hit too much, add to "hold" list and 403 */
-                if (t-n->timestamp<cfg->page_interval && n->count>=cfg->page_count) {
-                    if (!ip_node || t-ip_node->timestamp>=cfg->blocking_period)
-                        log_reason = "URI DOS";
-                    ret = cfg->http_reply;
-                    ntt_insert(cfg->hit_list, r->useragent_ip, t);
-                } else {
-
-                    /* Reset our hit count list as necessary */
-                    if (t-n->timestamp>=cfg->page_interval) {
-                        n->count=0;
-                    }
-                }
-                n->timestamp = t;
-                n->count++;
+            /* Check blocklisted URIs */
+            if (is_uri_blocklisted(r->uri, cfg)) {
+                if (!ip_node || t-ip_node->timestamp>=cfg->blocking_period)
+                    log_reason = "URI blocklist";
+                ret = cfg->http_reply;
+                ntt_insert(cfg->hit_list, r->useragent_ip, t);
             } else {
-                ntt_insert(cfg->hit_list, hash_key, t);
-            }
+                /* Has URI been hit too much? */
+                snprintf(hash_key, sizeof(hash_key), "%s_%s", r->useragent_ip, r->uri);
 
-            /* Has site been hit too much? */
-            snprintf(hash_key, sizeof(hash_key), "%s_SITE", r->useragent_ip);
-            n = ntt_find(cfg->hit_list, hash_key);
-            if (n != NULL) {
+                n = ntt_find(cfg->hit_list, hash_key);
+                if (n != NULL) {
 
-                /* If site is being hit too much, add to "hold" list and 403 */
-                if (t-n->timestamp<cfg->site_interval && n->count>=cfg->site_count) {
-                    if (!ip_node || t-ip_node->timestamp>=cfg->blocking_period)
-                        log_reason = "site DOS";
-                    ret = cfg->http_reply;
-                    ntt_insert(cfg->hit_list, r->useragent_ip, t);
-                } else {
+                    /* If URI is being hit too much, add to "hold" list and 403 */
+                    if (t-n->timestamp<cfg->page_interval && n->count>=cfg->page_count) {
+                        if (!ip_node || t-ip_node->timestamp>=cfg->blocking_period)
+                            log_reason = "URI DOS";
+                        ret = cfg->http_reply;
+                        ntt_insert(cfg->hit_list, r->useragent_ip, t);
+                    } else {
 
-                    /* Reset our hit count list as necessary */
-                    if (t-n->timestamp>=cfg->site_interval) {
-                        n->count=0;
+                        /* Reset our hit count list as necessary */
+                        if (t-n->timestamp>=cfg->page_interval) {
+                            n->count=0;
+                        }
                     }
+                    n->timestamp = t;
+                    n->count++;
+                } else {
+                    ntt_insert(cfg->hit_list, hash_key, t);
                 }
-                n->timestamp = t;
-                n->count++;
-            } else {
-                ntt_insert(cfg->hit_list, hash_key, t);
+
+                /* Has site been hit too much? */
+                snprintf(hash_key, sizeof(hash_key), "%s_SITE", r->useragent_ip);
+                n = ntt_find(cfg->hit_list, hash_key);
+                if (n != NULL) {
+
+                    /* If site is being hit too much, add to "hold" list and 403 */
+                    if (t-n->timestamp<cfg->site_interval && n->count>=cfg->site_count) {
+                        if (!ip_node || t-ip_node->timestamp>=cfg->blocking_period)
+                            log_reason = "site DOS";
+                        ret = cfg->http_reply;
+                        ntt_insert(cfg->hit_list, r->useragent_ip, t);
+                    } else {
+
+                        /* Reset our hit count list as necessary */
+                        if (t-n->timestamp>=cfg->site_interval) {
+                            n->count=0;
+                        }
+                    }
+                    n->timestamp = t;
+                    n->count++;
+                } else {
+                    ntt_insert(cfg->hit_list, hash_key, t);
+                }
             }
         }
 
@@ -583,10 +607,8 @@ static int is_whitelisted(const char *ip, const evasive_config *cfg) {
     return 0;
 }
 
-static int is_uri_whitelisted(const char *uri, const evasive_config *cfg) {
-
+static int pcre_vector_match(const char *uri, const struct pcre_vector *vec) {
     int rc;
-    pcre2_match_data *match_data;
 
     PCRE2_SPTR subject;
     size_t subject_length;
@@ -594,8 +616,9 @@ static int is_uri_whitelisted(const char *uri, const evasive_config *cfg) {
     subject = (PCRE2_SPTR) uri;
     subject_length = strlen((const char *)subject);
 
-    for (size_t i = 0; i < cfg->uri_whitelist.size; i++) {
-        const pcre2_code *re = cfg->uri_whitelist.data[i];
+    for (size_t i = 0; i < vec->size; i++) {
+        const pcre2_code *re = vec->data[i];
+        pcre2_match_data *match_data;
 
         match_data = pcre2_match_data_create_from_pattern(re, NULL);
         if (!match_data) {
@@ -624,11 +647,20 @@ static int is_uri_whitelisted(const char *uri, const evasive_config *cfg) {
     return 0;
 }
 
+static int is_uri_whitelisted(const char *uri, const evasive_config *cfg) {
+    return pcre_vector_match(uri, &cfg->uri_whitelist);
+}
+
+static int is_uri_blocklisted(const char *uri, const evasive_config *cfg) {
+    return pcre_vector_match(uri, &cfg->uri_blocklist);
+}
+
 static apr_status_t destroy_config(void *dconfig) {
     evasive_config *cfg = (evasive_config *) dconfig;
     if (cfg != NULL) {
         ntt_destroy(cfg->hit_list);
-        uri_whitelist_destroy(&cfg->uri_whitelist);
+        pcre_vector_destroy(&cfg->uri_whitelist);
+        pcre_vector_destroy(&cfg->uri_blocklist);
         free(cfg->ip_whitelist.data);
         free(cfg->email_notify);
         free(cfg->log_dir);
@@ -1102,6 +1134,9 @@ static const command_rec access_cmds[] =
 
     AP_INIT_ITERATE("DOSWhitelistUri", whitelist_uri, NULL, RSRC_CONF,
             "Files/paths regexes to whitelist"),
+
+    AP_INIT_ITERATE("DOSBlocklistUri", blocklist_uri, NULL, RSRC_CONF,
+            "Files/paths regexes to blocklist"),
 
     AP_INIT_ITERATE("DOSHTTPStatus", get_http_reply, NULL, RSRC_CONF,
             "HTTP reply code"),
