@@ -145,7 +145,7 @@ typedef struct {
     int http_reply;
 } evasive_config;
 
-static int is_whitelisted(const char *ip, const evasive_config *cfg);
+static int is_whitelisted(const apr_sockaddr_t *client, const evasive_config *cfg);
 
 static int is_uri_whitelisted(const char *uri, const evasive_config *cfg);
 static int is_uri_blocklisted(const char *uri, const evasive_config *cfg);
@@ -458,7 +458,7 @@ static int access_checker(request_rec *r)
         time_t t = time(NULL);
 
         /* Check whitelist */
-        if (is_whitelisted(r->useragent_ip, cfg))
+        if (is_whitelisted(r->useragent_addr, cfg))
             return OK;
 
         /* First see if the IP itself is on "hold" */
@@ -587,35 +587,29 @@ static int access_checker(request_rec *r)
     return ret;
 }
 
-static int is_whitelisted(const char *ip, const evasive_config *cfg) {
-    struct in_addr addrv4;
-    struct in6_addr addrv6;
-    char family;
-    int rc;
-
-    if (strchr(ip, ':') != NULL) {
-        family = AF_INET6;
-        rc = inet_pton(AF_INET6, ip, &addrv6);
-    } else {
-        family = AF_INET;
-        rc = inet_pton(AF_INET, ip, &addrv4);
-    }
-
-    if (rc != 1) {
-        ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "Invalid client IP address '%s'", ip);
+static int is_whitelisted(const apr_sockaddr_t *client, const evasive_config *cfg) {
+    switch (client->family) {
+    case AF_INET:
+    case AF_INET6:
+        break;
+    default:
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "Invalid client family 0x%x", client->family);
         return 0;
     }
 
     for (size_t i = 0; i < cfg->ip_whitelist.size; i++) {
         const struct ip_node *node = &cfg->ip_whitelist.data[i];
+        int rc;
 
-        if (node->family != family)
+        if (node->family != client->family)
             continue;
 
-        if (family == AF_INET) {
+        if (client->family == AF_INET) {
+            struct in_addr addrv4 = client->sa.sin.sin_addr;
             addrv4.s_addr &= node->mask.v4;
             rc = memcmp(&node->ip.v4, &addrv4, sizeof(node->ip.v4));
         } else {
+            struct in6_addr addrv6 = client->sa.sin6.sin6_addr;
             ipv6_apply_mask(&addrv6, &node->mask.v6);
             rc = memcmp(&node->ip.v6, &addrv6, sizeof(node->ip.v6));
         }
