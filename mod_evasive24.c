@@ -688,6 +688,17 @@ static const size_t ntt_prime_list[ntt_num_primes] =
     1610612741UL, 3221225473UL, 4294967291UL
 };
 
+/* Get the next prime bigger or equal than the given number */
+
+static size_t ntt_prime_get_next(size_t n) {
+    for (size_t i = 0; i < ntt_num_primes; i++) {
+        if (ntt_prime_list[i] >= n)
+            return ntt_prime_list[i];
+    }
+
+    return ntt_prime_list[ntt_num_primes - 1];
+}
+
 
 /* Find the numeric position in the hash table based on key and modulus */
 
@@ -723,13 +734,11 @@ static struct ntt_node *ntt_node_create(const char *key, apr_time_t timestamp) {
 /* Tree initializer */
 
 static struct ntt *ntt_create(size_t size) {
-    size_t i = 0;
     struct ntt *ntt = (struct ntt *) malloc(sizeof(struct ntt));
 
     if (ntt == NULL)
         return NULL;
-    while (i < (ntt_num_primes - 1) && ntt_prime_list[i] < size) { i++; }
-    ntt->size  = ntt_prime_list[i];
+    ntt->size  = ntt_prime_get_next(size);
     ntt->items = 0;
     ntt->tbl   = (struct ntt_node **) calloc(ntt->size, sizeof(struct ntt_node *));
     if (ntt->tbl == NULL) {
@@ -765,6 +774,78 @@ static int ntt_node_is_outdated(const struct ntt_node *node, apr_time_t timestam
     return timestamp - node->timestamp >= 6 * 60 * 60; /* 6 hours */
 }
 
+/* Copy a node into the tree; only used during tree growth */
+
+static void ntt_grow_copy(struct ntt *ntt, struct ntt_node *node, apr_time_t timestamp) {
+    size_t hash_code;
+    struct ntt_node **curr;
+
+    /* Ignore outdated entries */
+    if (ntt_node_is_outdated(node, timestamp)) {
+        free(node->key);
+        free(node);
+        return;
+    }
+
+    hash_code = ntt_hashcode(ntt, node->key);
+    curr = &ntt->tbl[hash_code];
+
+    while (*curr) {
+        /* No need to compare keys, since the original tree should not have duplicates */
+        curr = &(*curr)->next;
+    }
+
+    node->next = NULL;
+    *curr = node;
+    ntt->items++;
+}
+
+/* Grow the tree */
+
+static int ntt_grow(struct ntt *ntt, apr_time_t timestamp) {
+    struct ntt tmp_ntt;
+    struct ntt_node **new_tbl;
+    size_t new_size;
+
+    new_size = ntt_prime_get_next(ntt->size + 1);
+    if (new_size == ntt->size) {
+        errno = EOVERFLOW;
+        return -1;
+    }
+
+    new_tbl = calloc(new_size, sizeof(struct ntt_node *));
+    if (!new_tbl)
+        return -1;
+
+    tmp_ntt = (struct ntt) {
+        .size = new_size,
+        .items = 0,
+        .tbl = new_tbl,
+    };
+
+    for (size_t i = 0; i < ntt->size; i++) {
+        struct ntt_node *node;
+
+        node = ntt->tbl[i];
+        while (node) {
+            struct ntt_node *next;
+
+            next = node->next;
+            ntt_grow_copy(&tmp_ntt, node, timestamp);
+            node = next;
+        }
+    }
+
+    free(ntt->tbl);
+
+    ap_log_error(APLOG_MARK, APLOG_INFO, 0, ap_server_conf, "Resized hash table from %zu to %zu",
+                 ntt->size, new_size);
+
+    *ntt = tmp_ntt;
+
+    return 0;
+}
+
 /* Insert a node into the tree */
 
 static struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, apr_time_t timestamp) {
@@ -774,6 +855,15 @@ static struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, apr_time_t 
     struct ntt_node *new_node = NULL;
 
     if (ntt == NULL || ntt->items == SIZE_MAX) return NULL;
+
+    /* Grow on 75% utilization */
+    if (((ntt->size * 3) / 4) < ntt->items) {
+        if (ntt_grow(ntt, timestamp) < 0) {
+            ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "Failed to increase hashtable of size %zu and %zu entries: %s",
+                         ntt->size, ntt->items, strerror(errno));
+            return NULL;
+        }
+    }
 
     hash_code = ntt_hashcode(ntt, key);
     parent  = NULL;
