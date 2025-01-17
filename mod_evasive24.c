@@ -759,6 +759,12 @@ static struct ntt_node *ntt_find(struct ntt *ntt, const char *key) {
     return((struct ntt_node *)NULL);
 }
 
+/* Whether a node is outdated */
+
+static int ntt_node_is_outdated(const struct ntt_node *node, apr_time_t timestamp) {
+    return timestamp - node->timestamp >= 6 * 60 * 60; /* 6 hours */
+}
+
 /* Insert a node into the tree */
 
 static struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, apr_time_t timestamp) {
@@ -777,12 +783,27 @@ static struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, apr_time_t 
         if (strcmp(key, node->key) == 0) {
             new_node = node;
             node = NULL;
+            break;
         }
 
-        if (new_node == NULL) {
-            parent = node;
-            node = node->next;
+        /* Delete outdated entries */
+        if (ntt_node_is_outdated(node, timestamp)) {
+            struct ntt_node *next = node->next;
+
+            if (parent)
+                parent->next = next;
+            else
+                ntt->tbl[hash_code] = next;
+
+            free(node->key);
+            free(node);
+            ntt->items--;
+            node = next;
+            continue;
         }
+
+        parent = node;
+        node = node->next;
     }
 
     if (new_node != NULL) {
