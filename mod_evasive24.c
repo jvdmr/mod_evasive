@@ -100,14 +100,40 @@ static struct ntt_node *c_ntt_next(struct ntt *ntt, struct ntt_c *c);
 
 struct pcre_node {
     pcre2_code *re;
-    struct pcre_node *next;
+    pcre2_match_data *match_data;
+};
+
+struct pcre_vector {
+    struct pcre_node *data;
+    size_t size;
+};
+
+struct ip_node {
+    union {
+        struct in_addr v4;
+        struct in6_addr v6;
+    } ip;
+
+    union {
+        uint32_t v4;
+        struct in6_addr v6;
+    } mask;
+
+    char family; // AF_INET or AF_INET6
+};
+
+struct ip_vector {
+    struct ip_node *data;
+    size_t size;
 };
 
 typedef struct {
     int enabled;
     struct ntt *hit_list;   // Our dynamic hash table
     size_t hash_table_size;
-    struct pcre_node *uri_whitelist;
+    struct pcre_vector uri_whitelist;
+    struct pcre_vector uri_blocklist;
+    struct ip_vector ip_whitelist;
     unsigned int page_count;
     int page_interval;
     unsigned int site_count;
@@ -119,60 +145,238 @@ typedef struct {
     int http_reply;
 } evasive_config;
 
-static int is_whitelisted(const char *ip, evasive_config *cfg);
+static int is_whitelisted(const apr_sockaddr_t *client, const evasive_config *cfg);
 
 static int is_uri_whitelisted(const char *uri, const evasive_config *cfg);
+static int is_uri_blocklisted(const char *uri, const evasive_config *cfg);
 
 /* END DoS Evasive Maneuvers Globals */
+
+static void * ev_reallocarray(void *ptr, size_t nmemb, size_t size)
+{
+        if (size && nmemb > SIZE_MAX / size) {
+                errno = ENOMEM;
+                return NULL;
+        }
+
+        return realloc(ptr, nmemb * size);
+}
+
 
 static void * create_dir_conf(apr_pool_t *p, __attribute__((unused)) char *context)
 {
     /* Create a new hit list for this listener */
-    evasive_config *cfg = apr_pcalloc(p, sizeof(evasive_config));
-    if (cfg) {
-        cfg->enabled = 0;
-        cfg->hash_table_size = DEFAULT_HASH_TBL_SIZE;
-        cfg->hit_list = ntt_create(cfg->hash_table_size);
-        cfg->uri_whitelist = NULL;
-        cfg->page_count = DEFAULT_PAGE_COUNT;
-        cfg->page_interval = DEFAULT_PAGE_INTERVAL;
-        cfg->site_count = DEFAULT_SITE_COUNT;
-        cfg->site_interval = DEFAULT_SITE_INTERVAL;
-        cfg->email_notify = NULL;
-        cfg->log_dir = NULL;
-        cfg->system_command = NULL;
-        cfg->http_reply = DEFAULT_HTTP_REPLY;
+    evasive_config *cfg = apr_palloc(p, sizeof(evasive_config));
+    if (!cfg) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "Failed to allocate configuration");
+        return NULL;
     }
+
+    *cfg = (evasive_config) {
+        .enabled = 0,
+        .hit_list = ntt_create(DEFAULT_HASH_TBL_SIZE),
+        .hash_table_size = DEFAULT_HASH_TBL_SIZE,
+        .uri_whitelist = (struct pcre_vector) { .data = NULL, .size = 0 },
+        .uri_blocklist = (struct pcre_vector) { .data = NULL, .size = 0 },
+        .ip_whitelist = (struct ip_vector) { .data = NULL, .size = 0 },
+        .page_count = DEFAULT_PAGE_COUNT,
+        .page_interval = DEFAULT_PAGE_INTERVAL,
+        .site_count = DEFAULT_SITE_COUNT,
+        .site_interval = DEFAULT_SITE_INTERVAL,
+        .blocking_period = DEFAULT_BLOCKING_PERIOD,
+        .email_notify = NULL,
+        .log_dir = NULL,
+        .system_command = NULL,
+        .http_reply = DEFAULT_HTTP_REPLY,
+    };
+    if (!cfg->hit_list)
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "Failed to allocate hashtable");
 
     return cfg;
 }
 
-static const char *whitelist(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *ip)
+static int parse_wildcard(const char *ip, struct in_addr *addr, uint32_t *mask)
+{
+    char *dip;
+    const char *oct;
+    char *safeptr;
+    int i = 0;
+    uint32_t ip_byte = 0, mask_byte = 0;
+    unsigned long val;
+    char *endptr;
+
+    dip = strdup(ip);
+    if (!dip)
+        goto err;
+
+    oct = strtok_r(dip, ".", &safeptr);
+    while(oct != NULL && i < 4) {
+        if (oct[0] == '\0' || strlen(oct) > 3)
+            goto err;
+
+        if (oct[0] == '*' && oct[1] == '\0') {
+            ip_byte += 0;
+            mask_byte += 0;
+        } else {
+            errno = 0;
+            val = strtoul(oct, &endptr, 10);
+            if (errno || *endptr != '\0' || val > 255)
+                goto err;
+
+            ip_byte += val;
+            mask_byte += 255;
+        }
+
+        i++;
+        if (i < 4) {
+            ip_byte <<= 8;
+            mask_byte <<= 8;
+        }
+
+        oct = strtok_r(NULL, ".", &safeptr);
+    }
+
+    if (oct || i != 4)
+        goto err;
+
+    free(dip);
+
+    addr->s_addr = htobe32(ip_byte);
+    *mask = htobe32(mask_byte);
+    return 1;
+err:
+    free(dip);
+    return -1;
+}
+
+static void ipv6_cidr_bits_to_mask(unsigned long cidr_bits, struct in6_addr *mask)
+{
+    for (unsigned i = 0; i < 4; i++) {
+        if (cidr_bits == 0) {
+            mask->s6_addr32[i] = 0;
+        } else if (cidr_bits >= 32) {
+            mask->s6_addr32[i] = ~UINT32_C(0);
+        } else {
+            mask->s6_addr32[i] = htobe32(~((UINT32_C(1) << (32 - cidr_bits)) - 1));
+        }
+
+        if (cidr_bits >= 32)
+            cidr_bits -= 32;
+        else
+            cidr_bits = 0;
+    }
+}
+
+static void ipv6_apply_mask(struct in6_addr *restrict addr, const struct in6_addr *restrict mask)
+{
+    for (unsigned i = 0; i < 4; i++)
+        addr->s6_addr32[i] &= mask->s6_addr32[i];
+}
+
+static const char *whitelist_ip(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *ip)
 {
     evasive_config *cfg = (evasive_config *) dconfig;
-    char entry[128];
-    snprintf(entry, sizeof(entry), "WHITELIST_%s", ip);
-    ntt_insert(cfg->hit_list, entry, time(NULL));
+    struct in_addr ipv4;
+    struct in6_addr ipv6, maskv6;
+    struct ip_node *newdata;
+    const char *ip_parse = ip;
+    char *ip_copy = NULL;
+    const char *cidr_split;
+    char *endptr;
+    char family;
+    char wildcard = 0;
+    unsigned long mask_bits;
+    uint32_t maskv4;
+    int rc;
+
+    cidr_split = strchr(ip, '/');
+    if (cidr_split) {
+        ip_copy = strndup(ip, cidr_split - ip);
+        if (!ip_copy) {
+            ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "DOSWhitelist: OOM");
+            return NULL;
+        }
+
+        ip_parse = ip_copy;
+    }
+
+    if (strchr(ip_parse, '*') != NULL) {
+        family = AF_INET;
+        wildcard = 1;
+        rc = parse_wildcard(ip_parse, &ipv4, &maskv4);
+    } else if (strchr(ip_parse, ':') != NULL) {
+        family = AF_INET6;
+        rc = inet_pton(AF_INET6, ip_parse, &ipv6);
+    } else {
+        family = AF_INET;
+        rc = inet_pton(AF_INET, ip_parse, &ipv4);
+    }
+
+    if (cidr_split)
+        free(ip_copy);
+
+    if (rc != 1) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "DOSWhitelist: Invalid IP address '%s'", ip);
+        return NULL;
+    }
+
+    if (cidr_split) {
+        errno = 0;
+        mask_bits = strtoul(cidr_split + 1, &endptr, 10);
+        if (errno || *endptr != '\0' || mask_bits == 0 || mask_bits > (family == AF_INET ? 32 : 128)) {
+            ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "DOSWhitelist: Invalid IP CIDR range '%s'", ip);
+            return NULL;
+        }
+    } else {
+        mask_bits = family == AF_INET ? 32 : 128;
+    }
+
+    if (!wildcard) {
+        if (family == AF_INET) {
+            maskv4 = ~((UINT32_C(1) << (32 - mask_bits)) - 1);
+            maskv4 = htobe32(maskv4);
+            ipv4.s_addr &= maskv4;
+        } else {
+            ipv6_cidr_bits_to_mask(mask_bits, &maskv6);
+            ipv6_apply_mask(&ipv6, &maskv6);
+        }
+    }
+
+    newdata = ev_reallocarray(cfg->ip_whitelist.data, cfg->ip_whitelist.size + 1, sizeof(*cfg->ip_whitelist.data));
+    if (!newdata) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "DOSWhitelist: OOM");
+        return NULL;
+    }
+    cfg->ip_whitelist.data = newdata;
+
+    if (family == AF_INET) {
+        cfg->ip_whitelist.data[cfg->ip_whitelist.size++] = (struct ip_node) {
+            .family = AF_INET,
+            .ip.v4 = ipv4,
+            .mask.v4 = maskv4,
+        };
+    } else {
+        cfg->ip_whitelist.data[cfg->ip_whitelist.size++] = (struct ip_node) {
+            .family = AF_INET6,
+            .ip.v6 = ipv6,
+            .mask.v6 = maskv6,
+        };
+    }
 
     return NULL;
 }
 
-static const char *whitelist_uri(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *uri_re)
-{
-    evasive_config *cfg = (evasive_config *) dconfig;
-    struct pcre_node *node;
+static const char *pcre_vector_push(struct pcre_vector *vec, const char *uri_re) {
+    struct pcre_node *newdata;
+    pcre2_code *re;
     int errornumber;
     PCRE2_SIZE erroroffset;
     PCRE2_SPTR pattern;
-
-    node = (struct pcre_node *) malloc(sizeof(struct pcre_node));
-    if (node == NULL) {
-        return NULL;
-    }
+    pcre2_match_data *match_data;
 
     pattern = (PCRE2_SPTR) uri_re;
 
-    node->re = pcre2_compile(
+    re = pcre2_compile(
             pattern,               /* the pattern */
             PCRE2_ZERO_TERMINATED, /* indicates pattern is zero-terminated */
             PCRE2_NO_AUTO_CAPTURE, /* Disable numbered capturing parentheses */
@@ -182,33 +386,61 @@ static const char *whitelist_uri(__attribute__((unused)) cmd_parms *cmd, void *d
 
     /* Compilation failed: print the error message and exit. */
 
-    if (node->re == NULL)
-    {
+    if (!re) {
         PCRE2_UCHAR buffer[256];
         pcre2_get_error_message(errornumber, buffer, sizeof(buffer));
         ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "PCRE2 compilation of regex '%s' failed at offset %lu: %s\n",
                      uri_re, (unsigned long) erroroffset, buffer);
-        free(node);
         return NULL;
     }
 
-    node->next = cfg->uri_whitelist;
-    cfg->uri_whitelist = node;
+    match_data = pcre2_match_data_create_from_pattern(re, NULL);
+    if (!match_data) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "Failed to allocate PCRE2 match data");
+        pcre2_code_free(re);
+        return NULL;
+    }
+
+    newdata = ev_reallocarray(vec->data, vec->size + 1, sizeof(*(vec->data)));
+    if (!newdata) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "Failed to allocate array for URI list");
+        pcre2_match_data_free(match_data);
+        pcre2_code_free(re);
+        return NULL;
+    }
+    vec->data = newdata;
+
+    vec->data[vec->size++] = (struct pcre_node) {
+        .re = re,
+        .match_data = match_data,
+    };
+
     return NULL;
 }
 
-static void uri_whitelist_destroy(struct pcre_node *head)
+static const char *whitelist_uri(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *uri_re)
 {
-    struct pcre_node *iter = head, *tmp;
+    evasive_config *cfg = (evasive_config *) dconfig;
 
-    while (iter) {
-        tmp = iter->next;
+    return pcre_vector_push(&cfg->uri_whitelist, uri_re);
+}
 
-        pcre2_code_free(iter->re);
-        free(iter);
+static const char *blocklist_uri(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *uri_re)
+{
+    evasive_config *cfg = (evasive_config *) dconfig;
 
-        iter = tmp;
+    return pcre_vector_push(&cfg->uri_blocklist, uri_re);
+}
+
+static void pcre_vector_destroy(struct pcre_vector *vec)
+{
+    for (size_t i = 0; i < vec->size; i++) {
+        struct pcre_node *node = &vec->data[i];
+        pcre2_code_free(node->re);
+        pcre2_match_data_free(node->match_data);
     }
+
+    free(vec->data);
 }
 
 static int access_checker(request_rec *r)
@@ -226,7 +458,7 @@ static int access_checker(request_rec *r)
         time_t t = time(NULL);
 
         /* Check whitelist */
-        if (is_whitelisted(r->useragent_ip, cfg))
+        if (is_whitelisted(r->useragent_addr, cfg))
             return OK;
 
         /* First see if the IP itself is on "hold" */
@@ -245,53 +477,61 @@ static int access_checker(request_rec *r)
             if (is_uri_whitelisted(r->uri, cfg))
                 return OK;
 
-            /* Has URI been hit too much? */
-            snprintf(hash_key, sizeof(hash_key), "%s_%s", r->useragent_ip, r->uri);
-
-            n = ntt_find(cfg->hit_list, hash_key);
-            if (n != NULL) {
-
-                /* If URI is being hit too much, add to "hold" list and 403 */
-                if (t-n->timestamp<cfg->page_interval && n->count>=cfg->page_count) {
-                    if (!ip_node || t-ip_node->timestamp>=cfg->blocking_period)
-                        log_reason = "URI DOS";
-                    ret = cfg->http_reply;
-                    ntt_insert(cfg->hit_list, r->useragent_ip, t);
-                } else {
-
-                    /* Reset our hit count list as necessary */
-                    if (t-n->timestamp>=cfg->page_interval) {
-                        n->count=0;
-                    }
-                }
-                n->timestamp = t;
-                n->count++;
+            /* Check blocklisted URIs */
+            if (is_uri_blocklisted(r->uri, cfg)) {
+                if (!ip_node || t-ip_node->timestamp>=cfg->blocking_period)
+                    log_reason = "URI blocklist";
+                ret = cfg->http_reply;
+                ntt_insert(cfg->hit_list, r->useragent_ip, t);
             } else {
-                ntt_insert(cfg->hit_list, hash_key, t);
-            }
+                /* Has URI been hit too much? */
+                snprintf(hash_key, sizeof(hash_key), "%s_%s", r->useragent_ip, r->uri);
 
-            /* Has site been hit too much? */
-            snprintf(hash_key, sizeof(hash_key), "%s_SITE", r->useragent_ip);
-            n = ntt_find(cfg->hit_list, hash_key);
-            if (n != NULL) {
+                n = ntt_find(cfg->hit_list, hash_key);
+                if (n != NULL) {
 
-                /* If site is being hit too much, add to "hold" list and 403 */
-                if (t-n->timestamp<cfg->site_interval && n->count>=cfg->site_count) {
-                    if (!ip_node || t-ip_node->timestamp>=cfg->blocking_period)
-                        log_reason = "site DOS";
-                    ret = cfg->http_reply;
-                    ntt_insert(cfg->hit_list, r->useragent_ip, t);
-                } else {
+                    /* If URI is being hit too much, add to "hold" list and 403 */
+                    if (t-n->timestamp<cfg->page_interval && n->count>=cfg->page_count) {
+                        if (!ip_node || t-ip_node->timestamp>=cfg->blocking_period)
+                            log_reason = "URI DOS";
+                        ret = cfg->http_reply;
+                        ntt_insert(cfg->hit_list, r->useragent_ip, t);
+                    } else {
 
-                    /* Reset our hit count list as necessary */
-                    if (t-n->timestamp>=cfg->site_interval) {
-                        n->count=0;
+                        /* Reset our hit count list as necessary */
+                        if (t-n->timestamp>=cfg->page_interval) {
+                            n->count=0;
+                        }
                     }
+                    n->timestamp = t;
+                    n->count++;
+                } else {
+                    ntt_insert(cfg->hit_list, hash_key, t);
                 }
-                n->timestamp = t;
-                n->count++;
-            } else {
-                ntt_insert(cfg->hit_list, hash_key, t);
+
+                /* Has site been hit too much? */
+                snprintf(hash_key, sizeof(hash_key), "%s_SITE", r->useragent_ip);
+                n = ntt_find(cfg->hit_list, hash_key);
+                if (n != NULL) {
+
+                    /* If site is being hit too much, add to "hold" list and 403 */
+                    if (t-n->timestamp<cfg->site_interval && n->count>=cfg->site_count) {
+                        if (!ip_node || t-ip_node->timestamp>=cfg->blocking_period)
+                            log_reason = "site DOS";
+                        ret = cfg->http_reply;
+                        ntt_insert(cfg->hit_list, r->useragent_ip, t);
+                    } else {
+
+                        /* Reset our hit count list as necessary */
+                        if (t-n->timestamp>=cfg->site_interval) {
+                            n->count=0;
+                        }
+                    }
+                    n->timestamp = t;
+                    n->count++;
+                } else {
+                    ntt_insert(cfg->hit_list, hash_key, t);
+                }
             }
         }
 
@@ -347,54 +587,43 @@ static int access_checker(request_rec *r)
     return ret;
 }
 
-static int is_whitelisted(const char *ip, evasive_config *cfg) {
-    char hashkey[128];
-    char octet[4][4];
-    char *dip;
-    char *oct;
-    char *saveptr;
-    int i = 0;
-
-    memset(octet, 0, 16);
-    dip = strdup(ip);
-    if (dip == NULL)
+static int is_whitelisted(const apr_sockaddr_t *client, const evasive_config *cfg) {
+    switch (client->family) {
+    case AF_INET:
+    case AF_INET6:
+        break;
+    default:
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "Invalid client family 0x%x", client->family);
         return 0;
-
-    oct = strtok_r(dip, ".", &saveptr);
-    while(oct != NULL && i<4) {
-        if (strlen(oct)<=3)
-            strcpy(octet[i], oct);
-        i++;
-        oct = strtok_r(NULL, ".", &saveptr);
     }
-    free(dip);
 
-    /* Exact Match */
-    snprintf(hashkey, sizeof(hashkey), "WHITELIST_%s", ip);
-    if (ntt_find(cfg->hit_list, hashkey)!=NULL)
-        return 1;
+    for (size_t i = 0; i < cfg->ip_whitelist.size; i++) {
+        const struct ip_node *node = &cfg->ip_whitelist.data[i];
+        int rc;
 
-    /* IPv4 Wildcards */
-    snprintf(hashkey, sizeof(hashkey), "WHITELIST_%s.*.*.*", octet[0]);
-    if (ntt_find(cfg->hit_list, hashkey)!=NULL)
-        return 1;
+        if (node->family != client->family)
+            continue;
 
-    snprintf(hashkey, sizeof(hashkey), "WHITELIST_%s.%s.*.*", octet[0], octet[1]);
-    if (ntt_find(cfg->hit_list, hashkey)!=NULL)
-        return 1;
+        if (client->family == AF_INET) {
+            struct in_addr addrv4 = client->sa.sin.sin_addr;
+            addrv4.s_addr &= node->mask.v4;
+            rc = memcmp(&node->ip.v4, &addrv4, sizeof(node->ip.v4));
+        } else {
+            struct in6_addr addrv6 = client->sa.sin6.sin6_addr;
+            ipv6_apply_mask(&addrv6, &node->mask.v6);
+            rc = memcmp(&node->ip.v6, &addrv6, sizeof(node->ip.v6));
+        }
 
-    snprintf(hashkey, sizeof(hashkey), "WHITELIST_%s.%s.%s.*", octet[0], octet[1], octet[2]);
-    if (ntt_find(cfg->hit_list, hashkey)!=NULL)
-        return 1;
+        if (rc == 0)
+            return 1;
+    }
 
     /* No match */
     return 0;
 }
 
-static int is_uri_whitelisted(const char *uri, const evasive_config *cfg) {
-
+static int pcre_vector_match(const char *uri, const struct pcre_vector *vec) {
     int rc;
-    pcre2_match_data *match_data;
 
     PCRE2_SPTR subject;
     size_t subject_length;
@@ -402,12 +631,8 @@ static int is_uri_whitelisted(const char *uri, const evasive_config *cfg) {
     subject = (PCRE2_SPTR) uri;
     subject_length = strlen((const char *)subject);
 
-    for (const struct pcre_node *node = cfg->uri_whitelist; node; node = node->next) {
-        match_data = pcre2_match_data_create_from_pattern(node->re, NULL);
-        if (!match_data) {
-            ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf, "Failed to allocate pcre2 match data");
-            continue;
-        }
+    for (size_t i = 0; i < vec->size; i++) {
+        const struct pcre_node *node = &vec->data[i];
 
         rc = pcre2_match(
                 node->re,             /* the compiled pattern */
@@ -415,10 +640,8 @@ static int is_uri_whitelisted(const char *uri, const evasive_config *cfg) {
                 subject_length,       /* the length of the subject */
                 0,                    /* start at offset 0 in the subject */
                 0,                    /* default options */
-                match_data,           /* block for storing the result */
+                node->match_data,     /* block for storing the result */
                 NULL);                /* use default match context */
-
-        pcre2_match_data_free(match_data);   /* Release memory used for the match */
 
         if (rc >= 0) {
             // match
@@ -430,11 +653,21 @@ static int is_uri_whitelisted(const char *uri, const evasive_config *cfg) {
     return 0;
 }
 
+static int is_uri_whitelisted(const char *uri, const evasive_config *cfg) {
+    return pcre_vector_match(uri, &cfg->uri_whitelist);
+}
+
+static int is_uri_blocklisted(const char *uri, const evasive_config *cfg) {
+    return pcre_vector_match(uri, &cfg->uri_blocklist);
+}
+
 static apr_status_t destroy_config(void *dconfig) {
     evasive_config *cfg = (evasive_config *) dconfig;
     if (cfg != NULL) {
         ntt_destroy(cfg->hit_list);
-        uri_whitelist_destroy(cfg->uri_whitelist);
+        pcre_vector_destroy(&cfg->uri_whitelist);
+        pcre_vector_destroy(&cfg->uri_blocklist);
+        free(cfg->ip_whitelist.data);
         free(cfg->email_notify);
         free(cfg->log_dir);
         free(cfg->system_command);
@@ -902,11 +1135,14 @@ static const command_rec access_cmds[] =
     AP_INIT_TAKE1("DOSSystemCommand", get_system_command, NULL, RSRC_CONF,
             "Set system command on DoS"),
 
-    AP_INIT_ITERATE("DOSWhitelist", whitelist, NULL, RSRC_CONF,
+    AP_INIT_ITERATE("DOSWhitelist", whitelist_ip, NULL, RSRC_CONF,
             "IP-addresses wildcards to whitelist"),
 
     AP_INIT_ITERATE("DOSWhitelistUri", whitelist_uri, NULL, RSRC_CONF,
             "Files/paths regexes to whitelist"),
+
+    AP_INIT_ITERATE("DOSBlocklistUri", blocklist_uri, NULL, RSRC_CONF,
+            "Files/paths regexes to blocklist"),
 
     AP_INIT_ITERATE("DOSHTTPStatus", get_http_reply, NULL, RSRC_CONF,
             "HTTP reply code"),
