@@ -580,8 +580,8 @@ static int access_checker(request_rec *r)
     if (log_reason && ret == cfg->http_reply
             && (ap_satisfies(r) != SATISFY_ANY || !ap_some_auth_required(r))) {
         ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r,
-                "client denied by server configuration: %s: %s",
-                log_reason, r->filename);
+                "[host %s] [resource \"%s\"] [reason %s] client denied by server configuration",
+                r->hostname, r->filename, log_reason);
     }
 
     return ret;
