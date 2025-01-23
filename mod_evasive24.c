@@ -959,7 +959,7 @@ get_page_count(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char
 
     errno = 0;
     n = strtol(value, &endptr, 0);
-    if (errno || *endptr != '\0' || n <= 0) {
+    if (errno || *endptr != '\0' || n <= 0 || n > UINT_MAX) {
         ap_log_error(APLOG_MARK, APLOG_WARNING, 0, ap_server_conf, "Invalid DOSPageCount value '%s', using default %d.",
                      value, DEFAULT_PAGE_COUNT);
         cfg->page_count = DEFAULT_PAGE_COUNT;
@@ -978,7 +978,7 @@ get_site_count(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char
 
     errno = 0;
     n = strtol(value, &endptr, 0);
-    if (errno || *endptr != '\0' || n <= 0) {
+    if (errno || *endptr != '\0' || n <= 0 || n > UINT_MAX) {
         ap_log_error(APLOG_MARK, APLOG_WARNING, 0, ap_server_conf, "Invalid DOSSiteCount value '%s', using default %d.",
                      value, DEFAULT_SITE_COUNT);
         cfg->site_count = DEFAULT_SITE_COUNT;
