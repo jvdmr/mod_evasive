@@ -28,7 +28,6 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <stdlib.h>
-#include <time.h>
 #include <errno.h>
 #include <unistd.h>  // getpid(2)
 
@@ -73,7 +72,7 @@ struct ntt {
 /* ntt node (entry in the ntt root tree) */
 struct ntt_node {
     char *key;
-    time_t timestamp;
+    apr_time_t timestamp;
     size_t count;
     struct ntt_node *next;
 };
@@ -87,7 +86,7 @@ struct ntt_c {
 static struct ntt *ntt_create(size_t size);
 static int ntt_destroy(struct ntt *ntt);
 static struct ntt_node *ntt_find(struct ntt *ntt, const char *key);
-static struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, time_t timestamp);
+static struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, apr_time_t timestamp);
 static int ntt_delete(struct ntt *ntt, const char *key);
 static size_t ntt_hashcode(const struct ntt *ntt, const char *key);
 static struct ntt_node *c_ntt_first(struct ntt *ntt, struct ntt_c *c);
@@ -455,7 +454,7 @@ static int access_checker(request_rec *r)
     if (cfg->enabled && r->prev == NULL && r->main == NULL && cfg->hit_list != NULL) {
         char hash_key[2048];
         struct ntt_node *ip_node, *n;
-        time_t t = time(NULL);
+        apr_time_t t = r->request_time / 1000 / 1000; /* convert us to s */
 
         /* Check whitelist */
         if (is_whitelisted(r->useragent_addr, cfg))
@@ -700,7 +699,7 @@ static size_t ntt_hashcode(const struct ntt *ntt, const char *key) {
 
 /* Creates a single node in the tree */
 
-static struct ntt_node *ntt_node_create(const char *key, time_t timestamp) {
+static struct ntt_node *ntt_node_create(const char *key, apr_time_t timestamp) {
     char *node_key;
     struct ntt_node* node;
 
@@ -762,7 +761,7 @@ static struct ntt_node *ntt_find(struct ntt *ntt, const char *key) {
 
 /* Insert a node into the tree */
 
-static struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, time_t timestamp) {
+static struct ntt_node *ntt_insert(struct ntt *ntt, const char *key, apr_time_t timestamp) {
     size_t hash_code;
     struct ntt_node *parent;
     struct ntt_node *node;
