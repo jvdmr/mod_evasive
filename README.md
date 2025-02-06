@@ -171,7 +171,7 @@ following block to your httpd.conf:
 ```
 <IfModule mod_evasive.c>
 	DOSEnabled          true
-	DOSHashTableSize    3097
+	DOSHashTableSize    3079
 	DOSPageCount        2
 	DOSSiteCount        50
 	DOSPageInterval     1
