@@ -46,7 +46,7 @@ module AP_MODULE_DECLARE_DATA evasive_module;
 #define MAILER "/bin/mail %s"
 #define  LOG( A, ... ) { openlog("mod_evasive", LOG_PID, LOG_DAEMON); syslog( A, __VA_ARGS__ ); closelog(); }
 
-#define DEFAULT_HASH_TBL_SIZE   3097ul  // Default hash table size
+#define DEFAULT_HASH_TBL_SIZE   3079ul  // Default hash table size
 #define DEFAULT_PAGE_COUNT      2       // Default maximum page hit count per interval
 #define DEFAULT_SITE_COUNT      50      // Default maximum site hit count per interval
 #define DEFAULT_PAGE_INTERVAL   1       // Default 1 Second page interval

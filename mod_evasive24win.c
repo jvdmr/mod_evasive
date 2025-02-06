@@ -62,7 +62,7 @@ module AP_MODULE_DECLARE_DATA evasive_module;
 
 /* BEGIN DoS Evasive Maneuvers Definitions */
 
-#define DEFAULT_HASH_TBL_SIZE   3097ul  // Default hash table size
+#define DEFAULT_HASH_TBL_SIZE   3079ul  // Default hash table size
 #define DEFAULT_PAGE_COUNT      2       // Default maximum page hit count per interval
 #define DEFAULT_SITE_COUNT      50      // Default maximum site hit count per interval
 #define DEFAULT_PAGE_INTERVAL   1       // Default 1 Second page interval
