@@ -1150,7 +1150,7 @@ static const command_rec access_cmds[] =
 };
 
 static void register_hooks(apr_pool_t *p) {
-    ap_hook_access_checker(access_checker, NULL, NULL, APR_HOOK_MIDDLE);
+    ap_hook_access_checker(access_checker, NULL, NULL, APR_HOOK_FIRST-5);
     apr_pool_cleanup_register(p, NULL, apr_pool_cleanup_null, destroy_config);
 };
 
