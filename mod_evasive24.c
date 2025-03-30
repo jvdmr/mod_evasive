@@ -131,6 +131,7 @@ typedef struct {
     struct ntt *hit_list;   // Our dynamic hash table
     size_t hash_table_size;
     struct pcre_vector uri_whitelist;
+    struct pcre_vector uri_targetlist;
     struct pcre_vector uri_blocklist;
     struct ip_vector ip_whitelist;
     unsigned int page_count;
@@ -147,6 +148,7 @@ typedef struct {
 static int is_whitelisted(const apr_sockaddr_t *client, const evasive_config *cfg);
 
 static int is_uri_whitelisted(const char *uri, const evasive_config *cfg);
+static int is_uri_targeted(const char *uri, const evasive_config *cfg);
 static int is_uri_blocklisted(const char *uri, const evasive_config *cfg);
 
 /* END DoS Evasive Maneuvers Globals */
@@ -176,6 +178,7 @@ static void * create_dir_conf(apr_pool_t *p, __attribute__((unused)) char *conte
         .hit_list = ntt_create(DEFAULT_HASH_TBL_SIZE),
         .hash_table_size = DEFAULT_HASH_TBL_SIZE,
         .uri_whitelist = (struct pcre_vector) { .data = NULL, .size = 0 },
+        .uri_targetlist = (struct pcre_vector) { .data = NULL, .size = 0 },
         .uri_blocklist = (struct pcre_vector) { .data = NULL, .size = 0 },
         .ip_whitelist = (struct ip_vector) { .data = NULL, .size = 0 },
         .page_count = DEFAULT_PAGE_COUNT,
@@ -424,6 +427,13 @@ static const char *whitelist_uri(__attribute__((unused)) cmd_parms *cmd, void *d
     return pcre_vector_push(&cfg->uri_whitelist, uri_re);
 }
 
+static const char *target_uri(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *uri_re)
+{
+    evasive_config *cfg = (evasive_config *) dconfig;
+
+    return pcre_vector_push(&cfg->uri_targetlist, uri_re);
+}
+
 static const char *blocklist_uri(__attribute__((unused)) cmd_parms *cmd, void *dconfig, const char *uri_re)
 {
     evasive_config *cfg = (evasive_config *) dconfig;
@@ -474,6 +484,10 @@ static int access_checker(request_rec *r)
 
             /* Check whitelisted uris */
             if (is_uri_whitelisted(r->uri, cfg))
+                return OK;
+
+            /* If a Targetlist is defined, and the URI is not one of the targets, then do not perform DoS detection */
+            if (cfg->uri_targetlist.size && !is_uri_targeted(r->uri, cfg))
                 return OK;
 
             /* Check blocklisted URIs */
@@ -656,6 +670,10 @@ static int is_uri_whitelisted(const char *uri, const evasive_config *cfg) {
     return pcre_vector_match(uri, &cfg->uri_whitelist);
 }
 
+static int is_uri_targeted(const char *uri, const evasive_config *cfg) {
+    return pcre_vector_match(uri, &cfg->uri_targetlist);
+}
+
 static int is_uri_blocklisted(const char *uri, const evasive_config *cfg) {
     return pcre_vector_match(uri, &cfg->uri_blocklist);
 }
@@ -665,6 +683,7 @@ static apr_status_t destroy_config(void *dconfig) {
     if (cfg != NULL) {
         ntt_destroy(cfg->hit_list);
         pcre_vector_destroy(&cfg->uri_whitelist);
+        pcre_vector_destroy(&cfg->uri_targetlist);
         pcre_vector_destroy(&cfg->uri_blocklist);
         free(cfg->ip_whitelist.data);
         free(cfg->email_notify);
@@ -1250,6 +1269,9 @@ static const command_rec access_cmds[] =
 
     AP_INIT_ITERATE("DOSWhitelistUri", whitelist_uri, NULL, RSRC_CONF,
             "Files/paths regexes to whitelist"),
+
+    AP_INIT_ITERATE("DOSTargetlistUri", target_uri, NULL, RSRC_CONF,
+            "Files/paths regexes to target"),
 
     AP_INIT_ITERATE("DOSBlocklistUri", blocklist_uri, NULL, RSRC_CONF,
             "Files/paths regexes to blocklist"),
