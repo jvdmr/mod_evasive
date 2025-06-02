@@ -544,7 +544,7 @@ static int access_checker(request_rec *r)
             if (stat(filename, &s)) {
                 file = fopen(filename, "w");
                 if (file != NULL) {
-                    fprintf(file, "%ld\n", getpid());
+                    fprintf(file, "%ld\n", (long int)getpid());
                     fclose(file);
 
                     ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r, "Blacklisting address %s: possible DoS attack.", r->useragent_ip);
@@ -561,7 +561,10 @@ static int access_checker(request_rec *r)
 
                     if (cfg->system_command != NULL) {
                         snprintf(filename, sizeof(filename), cfg->system_command, r->useragent_ip);
-                        system(filename);
+                         int systemRet = system(filename);
+                         if(systemRet == -1){
+                                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "Couldn't execute %s %s ", filename, strerror(errno));
+                        }
                     }
 
                 } else {
