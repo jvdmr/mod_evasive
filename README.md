@@ -183,12 +183,13 @@ following block to your httpd.conf:
 Optionally you can also add the following directives:
 
 ```
-    DOSEmailNotify  you@yourdomain.com
-	DOSSystemCommand  "su - someuser -c '/sbin/... %s ...'"
-	DOSLogDir   "/var/lock/mod_evasive"
-	DOSWhitelist  127.0.0.1
-	DOSWhitelistUri  whitelist.*regex
-    DOSHTTPStatus       429
+	DOSEmailNotify      you@yourdomain.com
+	DOSSystemCommand    "su - someuser -c '/sbin/... %s ...'"
+	DOSLogDir           "/var/lock/mod_evasive"
+	DOSWhitelist        127.0.0.1
+	DOSWhitelistUri     whitelist.*regex
+	DOSTargetlistUri    targetlist.*regex
+	DOSHTTPStatus       429
 ```
 
 You will also need to add this line if you are building with dynamic support:
@@ -383,6 +384,24 @@ You can add several entries.
 > [!CAUTION]
 > This is currently UNTESTED on Windows, I'm not sure it will even compile. Let
 > me know about any issues, or even if it does work as expected! :pray:
+
+## Targeting URI's
+
+It may be desirable to apply DoS detection only to specific paths, such as '/login'.
+If a target list of URI's is defined, then URI's that do not match one of the targets are excluded from DoS detection.
+For example, if only '/login' is targeted, then excessive requests to '/home' will not trigger evasive responses. 
+
+To target a URI add an entry to the Apache configuration
+in the following fashion:
+
+	DOSTargetlistUri  /path/to/targeted/resource
+	DOSTargetlistUri  .*targeted.*
+
+Like `DOSWhitelistUri`, `DOSTargetlistUri` supports perl-style regex and matches the whole request URI
+(everything between the domain name and the ?) against this regex. 
+
+> [!CAUTION]
+> This is only available in mod_evasive24.c
 
 # Tweaking Apache
 
