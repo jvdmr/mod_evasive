@@ -563,7 +563,7 @@ static int access_checker(request_rec *r)
                         snprintf(filename, sizeof(filename), cfg->system_command, r->useragent_ip);
                          int systemRet = system(filename);
                          if(systemRet == -1){
-                                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "Couldn't execute %s %s ",filename, strerror(errno));
+                                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "Couldn't execute %s %s ", filename, strerror(errno));
                         }
                     }
 
